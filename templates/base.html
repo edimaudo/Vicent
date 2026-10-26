@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Vincent is your personal art concierge for discovering, finding, understanding, curating, and acquiring art.">
+  <title>{% block title %}Vincent | Your personal art concierge{% endblock %}</title>
+  <script>
+    (() => {
+      try {
+        const savedTheme = localStorage.getItem('vincentThemePreference') ?? localStorage.getItem('artcoThemePreference');
+        if (savedTheme !== null) localStorage.setItem('vincentThemePreference', savedTheme);
+        document.documentElement.dataset.theme = savedTheme === 'dark' ? 'dark' : 'light';
+        document.documentElement.style.colorScheme = savedTheme === 'dark' ? 'dark' : 'light';
+      } catch (_) {
+        document.documentElement.dataset.theme = 'light';
+        document.documentElement.style.colorScheme = 'light';
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261025-vincent-brand">
+</head>
+<body>
+<div class="app-root">
+  <header class="topbar{% if page == 'home' %} topbar--landing{% endif %}" role="banner">
+    <a class="brand" href="{% if page == 'home' %}/{% else %}/dashboard{% endif %}" aria-label="{% if page == 'home' %}Vincent home{% else %}Vincent dashboard{% endif %}">Vincent</a>
+    {% if page != 'home' %}
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/dashboard" data-page="dashboard">Dashboard</a>
+      <a href="/concierge" data-page="concierge">Concierge</a>
+      <a href="/saved" data-page="saved">Saved ArtWorks</a>
+    </nav>
+    {% endif %}
+    <div class="topbar-actions">
+      <a class="account-link" id="authLink" href="/login">Sign in</a>
+      <button class="secondary-button account-logout" id="logoutButton" type="button" hidden>Log out</button>
+      <button class="icon-button" id="themeToggle" type="button" aria-label="Switch to dark mode">◐</button>
+      <label class="font-control" for="fontScale">
+        <span class="sr-only">Text size</span>
+        <select id="fontScale" aria-label="Text size">
+          <option value="sm">Small</option>
+          <option value="md" selected>Medium</option>
+          <option value="lg">Large</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <main id="mainContent">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script>
+  window.ART_CONCIERGE_PAGE = "{{ page }}";
+  window.ART_AUTH_MODE = "{{ auth_mode|default('') }}";
+  window.ART_AUTH_NEXT = {{ next_url|default('/dashboard')|tojson }};
+</script>
+<script src="/static/js/app.js?v=20261025-vincent-brand"></script>
+{% block page_script %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Vincent | Results{% endblock %}
+{% block content %}
+<section id="resultsPage" class="workspace-page shell results-page">
+  <div class="workspace-header results-heading">
+    <div>
+      <h1 id="resultsHeading">Works worth a closer look.</h1>
+      <p class="lede" id="resultsSummary"></p>
+      <p class="results-meta" id="resultsMeta"></p>
+      <div class="visual-inspiration-result" id="visualInspirationSummary" hidden aria-live="polite"></div>
+      <p class="action-message" id="purchaseMessage" aria-live="polite"></p>
+    </div>
+    <div class="header-actions-group">
+      <a class="secondary-button" href="/concierge">Refine search</a>
+      <a class="primary-button" href="/concierge">Ask again</a>
+    </div>
+  </div>
+
+  <div id="tasteSummary" class="taste-summary" hidden>
+    <div>
+      <h2>What guided the search</h2>
+      <p id="tasteSummaryCopy"></p>
+    </div>
+    <div id="tasteTags" class="taste-tags"></div>
+  </div>
+
+  <section id="learningGuideSection" class="learning-guide result-section" hidden aria-labelledby="learningGuideHeading">
+    <div class="section-heading">
+      <h2 id="learningGuideHeading">Learn about the subject</h2>
+      <p id="learningGuideTopic"></p>
+    </div>
+    <p class="learning-guide-overview" id="learningGuideOverview"></p>
+    <section class="learning-major-works" id="learningArtistWorksSection" hidden aria-labelledby="learningArtistWorksHeading">
+      <h3 id="learningArtistWorksHeading">Selected works</h3>
+      <ul id="learningMajorWorksList" class="learning-major-works-list"></ul>
+    </section>
+    <div class="learning-guide-grid">
+      <section aria-labelledby="learningKeyIdeasHeading"><h3 id="learningKeyIdeasHeading">Key ideas</h3><ul id="learningKeyIdeas"></ul></section>
+      <section aria-labelledby="learningLookCloserHeading"><h3 id="learningLookCloserHeading">How to look closer</h3><ul id="learningLookCloser"></ul></section>
+      <section aria-labelledby="learningTermsHeading"><h3 id="learningTermsHeading">Useful terms</h3><dl id="learningTerms"></dl></section>
+      <section aria-labelledby="learningQuestionsHeading"><h3 id="learningQuestionsHeading">Questions to explore</h3><ul id="learningQuestions"></ul></section>
+    </div>
+    <section class="learning-examples" id="learningExamplesSection" hidden aria-labelledby="learningExamplesHeading">
+      <h3 id="learningExamplesHeading">Works to compare</h3><div id="learningExamples" class="learning-examples-list"></div>
+    </section>
+    <p class="learning-source-note" id="learningSourceNote"></p>
+  </section>
+
+  <section class="result-section" id="recommendationsSection" aria-labelledby="resultWorksHeading">
+    <div class="section-heading inline-heading">
+      <div>
+        <h2 id="resultWorksHeading">Recommendations</h2>
+        <p>Chosen against the brief you gave me.</p>
+      </div>
+    </div>
+    <div id="artGrid" class="art-grid"></div>
+  </section>
+
+  <section id="notForSaleSection" class="result-section not-for-sale" hidden aria-labelledby="notForSaleHeading">
+    <div class="section-heading">
+      <h2 id="notForSaleHeading">Not for sale</h2>
+      <p id="notForSaleHint"></p>
+    </div>
+    <div id="notForSaleGrid" class="art-grid"></div>
+  </section>
+
+  <section class="refine-panel" id="refinePanel" aria-labelledby="refineHeading">
+    <div>
+      <h2 id="refineHeading">Tell me what to change</h2>
+      <p>Ask for more like something you saw, or move the search in a different direction.</p>
+    </div>
+    <div class="refine-row">
+      <input id="feedback" type="text" placeholder="More photography, less abstract, lower price…" aria-label="Refine your search">
+      <button class="primary-button" id="refineButton" type="button">Refine</button>
+    </div>
+  </section>
+</section>
+{% endblock %}

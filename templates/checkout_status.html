@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Vincent | Purchase status{% endblock %}
+{% block content %}
+<section class="workspace-page shell checkout-page" aria-labelledby="checkoutStatusHeading">
+  <div class="checkout-status" id="checkoutStatusCard" data-session-id="{{ session_id|default('', true) }}" data-checkout-status="{{ status }}" data-provider="{{ payment_provider|default('stripe') }}">
+    {% if status == 'verify' or status == 'paypal_verify' %}
+      <h1 id="checkoutStatusHeading">Checking your payment status…</h1>
+      <p class="lede" id="checkoutStatusMessage" role="status" aria-live="polite">{% if payment_provider == 'paypal' %}Vincent is verifying and capturing this PayPal order. Returning to this page does not by itself confirm payment.{% else %}Vincent is checking the Checkout Session with Stripe. Returning to this page does not by itself confirm payment.{% endif %}</p>
+      <dl class="checkout-order-details" id="checkoutOrderDetails" hidden></dl>
+      <p class="action-message" id="checkoutStatusReference"></p>
+      <div class="checkout-actions">
+        <button class="secondary-button" id="refreshCheckoutStatus" type="button">Check status again</button>
+        <a class="primary-button" href="/dashboard#purchases">View Purchases</a>
+        <a class="secondary-button" href="/saved">View saved art</a>
+      </div>
+    {% else %}
+      <h1 id="checkoutStatusHeading">Checkout cancelled.</h1>
+      <p class="lede" id="checkoutStatusMessage" role="status">No payment confirmation was received. You can return to your recommendations and try again.</p>
+      <div class="checkout-actions">
+        <a class="primary-button" href="/concierge">Ask my concierge</a>
+        <a class="secondary-button" href="/saved">View saved art</a>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

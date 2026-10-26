@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{% if auth_mode == 'register' %}Vincent | Create account{% else %}Vincent | Sign in{% endif %}{% endblock %}
+{% block content %}
+<section class="workspace-page shell auth-page" aria-labelledby="authHeading">
+  <div class="auth-card">
+    <h1 id="authHeading">{% if auth_mode == 'register' %}Create your Vincent account{% else %}Sign in to Vincent{% endif %}</h1>
+    <p class="lede">Keep your taste profile, saved artwork, and purchase history available across your devices.</p>
+    {% if not database_configured %}<p class="auth-status" role="status">Account access is not available yet.</p>{% endif %}
+    <form id="authForm" data-mode="{{ auth_mode }}">
+      <label for="authEmail">Email</label>
+      <input id="authEmail" name="email" type="email" autocomplete="email" required maxlength="254" placeholder="you@example.com">
+      <label for="authPassword">Password</label>
+      <input id="authPassword" name="password" type="password" autocomplete="{% if auth_mode == 'register' %}new-password{% else %}current-password{% endif %}" required minlength="10" maxlength="256" placeholder="At least 10 characters">
+      <p id="authMessage" class="action-message" role="status" aria-live="polite"></p>
+      <button class="primary-button auth-submit" id="authSubmit" type="submit">{% if auth_mode == 'register' %}Create account{% else %}Sign in{% endif %} <span aria-hidden="true">→</span></button>
+    </form>
+    <p class="auth-switch">{% if auth_mode == 'register' %}Already have an account? <a href="/login?next={{ next_url|urlencode }}">Sign in</a>{% else %}New to Vincent? <a href="/register?next={{ next_url|urlencode }}">Create an account</a>{% endif %}</p>
+  </div>
+</section>
+{% endblock %}

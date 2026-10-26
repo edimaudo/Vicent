@@ -1,0 +1,130 @@
+from __future__ import annotations
+
+from typing import Any
+import logging
+
+import httpx
+
+from .config import QLOO_API_KEY, QLOO_ARTIST_TAKE, QLOO_BASE_URL, QLOO_SEARCH_LIMIT, REQUEST_TIMEOUT
+
+logger = logging.getLogger(__name__)
+
+# These are the current Insights entity types documented for the Qloo hackathon.
+# Music is represented by the artist entity type; food/drink places use place/brand.
+SEARCH_TYPES = [
+    "urn:entity:artist",
+    "urn:entity:book",
+    "urn:entity:brand",
+    "urn:entity:destination",
+    "urn:entity:movie",
+    "urn:entity:person",
+    "urn:entity:place",
+    "urn:entity:podcast",
+    "urn:entity:tv_show",
+    "urn:entity:video_game",
+]
+
+
+def _headers() -> dict[str, str]:
+    return {"X-Api-Key": QLOO_API_KEY, "Accept": "application/json"}
+
+
+async def search_entities(query: str) -> list[dict[str, Any]]:
+    """Resolve a user's cultural reference using Qloo Entity Search."""
+    if not query.strip():
+        return []
+    if not QLOO_API_KEY:
+        logger.warning("Qloo entity search skipped because QLOO_API_KEY is not configured")
+        return []
+
+    params = [
+        ("query", query.strip()),
+        *[("types", entity_type) for entity_type in SEARCH_TYPES],
+        ("take", QLOO_SEARCH_LIMIT),
+        ("sort_by", "match"),
+    ]
+
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        response = await client.get(
+            f"{QLOO_BASE_URL}/search",
+            headers=_headers(),
+            params=params,
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(f"Qloo entity search failed (HTTP {response.status_code})")
+        payload = response.json()
+        entities = _extract_entities(payload)
+        logger.info("Qloo entity search query=%r returned %d entities", query, len(entities))
+        return entities
+
+
+async def get_artist_insights(
+    entity_ids: list[str],
+    discovery_level: int,
+) -> list[dict[str, Any]]:
+    """Ask Qloo for artist results influenced by the user's cross-domain taste."""
+    if not entity_ids:
+        return []
+    if not QLOO_API_KEY:
+        logger.warning("Qloo Insights skipped because QLOO_API_KEY is not configured")
+        return []
+
+    trend_bias = "low" if discovery_level < 35 else "medium" if discovery_level < 70 else "high"
+    cross_domain = 6 if discovery_level < 35 else 12 if discovery_level < 70 else 20
+    params = {
+        "filter.type": "urn:entity:artist",
+        "signal.interests.entities": ",".join(entity_ids[:8]),
+        "signal.interests.entities.weight": "1",
+        "take": str(QLOO_ARTIST_TAKE),
+        "bias.trends": trend_bias,
+        "backfill.cross_domain.take": str(cross_domain),
+        "feature.explainability": "true",
+    }
+
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        response = await client.get(
+            f"{QLOO_BASE_URL}/v2/insights",
+            headers=_headers(),
+            params=params,
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(f"Qloo artist insights failed (HTTP {response.status_code})")
+        payload = response.json()
+        artists = _extract_entities(payload)
+        logger.info("Qloo artist insights returned %d entities from %d input signals", len(artists), len(entity_ids[:8]))
+        return artists
+
+
+def _extract_entities(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize common Qloo entity/insights response shapes for the app."""
+    candidates = (
+        payload.get("entities")
+        or payload.get("results")
+        or payload.get("data")
+        or payload.get("_embedded", {}).get("entities")
+        or []
+    )
+    if isinstance(candidates, dict):
+        candidates = candidates.get("entities") or candidates.get("results") or []
+
+    output: list[dict[str, Any]] = []
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        properties = item.get("properties") or {}
+        query_info = item.get("query") or {}
+        explainability = query_info.get("explainability") or item.get("explainability")
+        if explainability is None and isinstance(item.get("query"), dict):
+            explainability = item["query"].get("explainability")
+        output.append(
+            {
+                "id": item.get("entity_id") or item.get("id"),
+                "name": item.get("name") or properties.get("name") or "Unknown",
+                "type": item.get("type") or item.get("subtype"),
+                "affinity": query_info.get("affinity") or item.get("affinity"),
+                "image": properties.get("image") or item.get("image"),
+                "description": properties.get("description") or item.get("description"),
+                "explainability": explainability,
+            }
+        )
+    return output

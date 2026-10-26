@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+import asyncio
+from types import SimpleNamespace
+
+from models.schemas import ConciergeRequest, Intent
+import services.agent as agent
+from services.art_sources import Artwork
+from services.llm import RequestSignals
+
+
+class FakeProvider:
+    def __init__(self, name: str, works_by_query: dict[str, list[Artwork]]):
+        self.name = name
+        self.works_by_query = works_by_query
+
+    async def search(self, query: str, limit: int = 18):
+        return self.works_by_query.get(query, [])[:limit]
+
+
+def work(id_: str, artist: str, source_kind: str = "institution", availability: str = "not_for_sale", price=None, medium="painting"):
+    return Artwork(
+        id=id_, title=f"{artist} work", artist=artist, image_url="https://example.com/image.jpg",
+        detail_url="https://example.com/work", source="Fake", source_kind=source_kind,
+        availability=availability, price=price, currency="CAD" if price is not None else None,
+        medium=medium, dimensions="60 x 80 cm", year="2024", description="A test artwork.",
+    )
+
+
+async def main():
+    calls = {"extract": [], "qloo_search": [], "plan": [], "review": []}
+
+    async def fake_extract(goal, existing_loves, existing_interests, avoid_references=None):
+        calls["extract"].append(goal)
+        return RequestSignals(
+            cultural_references=["Issey Miyake", "Radiohead"], art_interests=["minimalism"],
+            mediums=["painting"], room="living room", size_preference=None, market="Canada",
+            budget_min=None, budget_max=5000, number_of_works=1,
+        )
+
+    async def fake_search(query):
+        calls["qloo_search"].append(query)
+        return [{"id": f"qloo:{query}", "name": query, "type": "urn:entity:artist"}]
+
+    async def fake_qloo(ids, discovery_level):
+        return [{"id": "qloo-artist", "name": "Test Artist", "affinity": 0.9}]
+
+    async def fake_plan(*args, **kwargs):
+        calls["plan"].append(args[1])
+        return SimpleNamespace(queries=["Test Artist", "minimalist painting"])
+
+    request_goal = "Find me something calm for my living room under $5,000, inspired by the design I like."
+    commercial = FakeProvider("Commercial", {
+        request_goal: [work("commercial-1", "Test Artist", "commercial", "available", 3200)],
+    })
+    institutional = FakeProvider("Institution", {
+        "minimalism": [work("institution-1", "Another Artist")],
+    })
+
+    original = {
+        "extract_request_signals": agent.extract_request_signals,
+        "search_entities": agent.search_entities,
+        "get_artist_insights": agent.get_artist_insights,
+        "plan_art_searches": agent.plan_art_searches,
+        "commercial_providers": agent.commercial_providers,
+        "institutional_providers": agent.institutional_providers,
+    }
+    agent.extract_request_signals = fake_extract
+    agent.search_entities = fake_search
+    agent.get_artist_insights = fake_qloo
+    agent.plan_art_searches = fake_plan
+    agent.commercial_providers = lambda: [commercial]
+    agent.institutional_providers = lambda: [institutional]
+
+    try:
+        request = ConciergeRequest(
+            intent=Intent.buy,
+            loves=[],
+            goal=request_goal,
+            discovery_level=50,
+        )
+        result = await agent.run_concierge(request)
+        assert calls["extract"] == [request.goal]
+        assert "Issey Miyake" in calls["qloo_search"]
+        assert "Radiohead" in calls["qloo_search"]
+        assert result["results"][0]["id"] == "commercial-1"
+        assert all(item["source_kind"] == "commercial" and item["availability"] == "available" for item in result["results"])
+        assert calls["plan"], "Qloo associations should be translated into optional art-catalogue directions"
+        assert result["diagnostics"]["cultural_art_directions_used"] > 0
+        assert result["not_for_sale"] == []
+        assert all(item["source_kind"] == "commercial" and item["availability"] == "available" for item in result["results"])
+        assert all(item["image_url"] for item in result["results"])
+        print("agent smoke: PASS")
+        print(f"qloo searches: {calls['qloo_search']}")
+        print(f"translated cultural directions: {result['diagnostics']['cultural_art_directions_used']}")
+        print(f"primary results: {[item['id'] for item in result['results']]}")
+        print("not-for-sale padding: none")
+    finally:
+        for name, value in original.items():
+            setattr(agent, name, value)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
