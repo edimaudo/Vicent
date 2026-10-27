@@ -420,6 +420,13 @@ def test_demo_signin_works_without_database_and_shows_authenticated_header(monke
     assert login_soup.select_one("#authForm") is not None
     assert "Account access is not available yet" not in login_page.text
     assert "New to Vincent?" not in login_page.text
+    assert "Sign in to continue to your art concierge." not in login_page.text
+    assert "Demo access is prefilled." not in login_page.text
+    assert login_soup.select_one("#authLink") is None
+    assert login_soup.select_one("#logoutButton") is None
+    assert "topbar--auth" in login_soup.select_one("header.topbar")["class"]
+    assert login_soup.select_one("#themeToggle") is not None
+    assert login_soup.select_one("#fontScale") is not None
     assert login_soup.select_one("nav.primary-nav") is None
     assert login_soup.select_one("#authEmail")["value"] == config.VINCENT_DEMO_EMAIL
     assert login_soup.select_one("#authPassword")["value"] == config.VINCENT_DEMO_PASSWORD

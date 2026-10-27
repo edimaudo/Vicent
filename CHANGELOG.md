@@ -1,3 +1,18 @@
+## 2026-10-27 — Sign-in and Concierge layout refinements
+
+- Removed the extra explanatory sentence and demo-access paragraph from the sign-in form so the page shows only its title and sign-in controls.
+- Removed the Sign in account link from the sign-in header while keeping the light/dark toggle and text-size selector aligned at the far right.
+- Placed **What would you like to do?** and **Where should we look?** in a two-column selector row on wider screens, stacking the controls on narrow screens for readability.
+- Added regression coverage for the clean sign-in page, right-aligned header controls, and side-by-side Concierge selectors.
+
+### Verification
+
+- `pytest -q` — 131 passed.
+- `node --check static/js/app.js` — passed.
+- `python -m compileall -q .` — passed.
+
+---
+
 ## 2026-10-26 — Landing page, sign-in, and MVP demo account
 
 - Added a Buy art card to **What can I help you with?** and updated the landing-page description to explicitly include buying art from connected galleries.

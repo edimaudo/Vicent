@@ -1689,15 +1689,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 .account-logout-link:hover, .account-logout-link:focus-visible { text-decoration: underline; }
 .account-logout-link[hidden] { display: none !important; }
-.demo-account-note {
-  margin: 0 0 20px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  color: var(--muted);
-  font-size: .88rem;
-  line-height: 1.5;
-}
 .market-scope-control {
   display: grid;
   grid-template-columns: minmax(150px, max-content) minmax(0, 270px);
@@ -1721,4 +1712,65 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 @media (max-width: 360px) {
   .market-scope-control { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .concierge-service-control .market-scope-control label { white-space: normal; }
+}
+
+/* October 27 UI refinement: keep the auth header quiet and account controls right-aligned. */
+.topbar--auth {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.topbar--auth .topbar-actions {
+  grid-column: 2;
+  justify-self: end;
+}
+
+/* Concierge selectors form a two-column row on wider screens. */
+.concierge-page .concierge-service-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px 24px;
+  width: 100%;
+}
+.concierge-page .service-select-control,
+.concierge-page .market-scope-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+}
+.concierge-page .service-select-control label,
+.concierge-page .market-scope-control label {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: .92rem;
+  font-weight: 650;
+  line-height: 1.4;
+  white-space: normal;
+}
+.concierge-page .service-select-control select,
+.concierge-page .market-scope-control select {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+.concierge-page .service-description,
+.concierge-page #personalizationControl {
+  grid-column: 1 / -1;
+}
+.concierge-page .service-description { margin: 0; }
+
+@media (max-width: 640px) {
+  .concierge-page .concierge-service-control {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .concierge-page .service-description,
+  .concierge-page #personalizationControl { grid-column: 1; }
 }

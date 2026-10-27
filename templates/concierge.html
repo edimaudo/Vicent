@@ -12,14 +12,16 @@
       <h2 id="conversationHeading" class="sr-only">Concierge conversation</h2>
 
       <div class="concierge-service-control">
-        <label for="serviceSelect">What would you like to do?</label>
-        <select id="serviceSelect" aria-label="Choose a service">
-          <option value="discover">Explore art</option>
-          <option value="find">Find art</option>
-          <option value="curate">Curate a collection</option>
-          <option value="buy">Buy art</option>
-          <option value="learn">Learn about art</option>
-        </select>
+        <div class="service-select-control">
+          <label for="serviceSelect">What would you like to do?</label>
+          <select id="serviceSelect" aria-label="Choose a service">
+            <option value="discover">Explore art</option>
+            <option value="find">Find art</option>
+            <option value="curate">Curate a collection</option>
+            <option value="buy">Buy art</option>
+            <option value="learn">Learn about art</option>
+          </select>
+        </div>
         <div class="market-scope-control" id="marketScopeControl">
           <label for="marketScope">Where should we look?</label>
           <select id="marketScope" name="market_scope" aria-label="Choose artwork region">

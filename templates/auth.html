@@ -4,8 +4,6 @@
 <section class="workspace-page shell auth-page" aria-labelledby="authHeading">
   <div class="auth-card">
     <h1 id="authHeading">{% if auth_mode == 'register' %}Create your Vincent account{% else %}Sign in to Vincent{% endif %}</h1>
-    <p class="lede">Sign in to continue to your art concierge.</p>
-    {% if auth_mode != 'register' %}<p class="demo-account-note">Demo access is prefilled. Select <strong>Sign in</strong> to continue. Demo profile and saved items stay in this browser. Shared demo credentials are not private or shared across devices.</p>{% endif %}
     <form id="authForm" data-mode="{{ auth_mode }}">
       <label for="authEmail">Email</label>
       <input id="authEmail" name="email" type="email" autocomplete="email" required maxlength="254" placeholder="you@example.com" value="{% if auth_mode != 'register' %}{{ demo_email }}{% endif %}">

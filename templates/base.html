@@ -21,11 +21,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=20261026-auth-demo-buy-inline">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261027-auth-layout-controls">
 </head>
 <body>
 <div class="app-root">
-  <header class="topbar{% if page == 'home' %} topbar--landing{% endif %}" role="banner">
+  <header class="topbar{% if page == 'home' %} topbar--landing{% elif page == 'auth' %} topbar--auth{% endif %}" role="banner">
     <a class="brand" href="{% if page == 'home' %}/{% else %}/dashboard{% endif %}" aria-label="{% if page == 'home' %}Vincent home{% else %}Vincent dashboard{% endif %}">Vincent</a>
     {% if page not in ['home', 'auth'] %}
     <nav class="primary-nav" aria-label="Primary navigation">
@@ -35,8 +35,10 @@
     </nav>
     {% endif %}
     <div class="topbar-actions">
+      {% if page != 'auth' %}
       <a class="account-link" id="authLink" href="{% if current_user %}/dashboard{% else %}/login?next=%2Fdashboard{% endif %}" title="{% if current_user %}{{ current_user.email }}{% else %}Sign in to Vincent{% endif %}">{% if current_user %}Welcome, {{ current_user.name or current_user.email.split('@')[0]|replace('.', ' ')|replace('_', ' ')|title }}{% else %}Sign in{% endif %}</a>
       <a class="account-logout-link" id="logoutButton" href="/logout" {% if not current_user %}hidden{% endif %}>Sign out</a>
+      {% endif %}
       <button class="icon-button" id="themeToggle" type="button" aria-label="Switch to dark mode">◐</button>
       <label class="font-control" for="fontScale">
         <span class="sr-only">Text size</span>
@@ -58,7 +60,7 @@
   window.ART_AUTH_MODE = "{{ auth_mode|default('') }}";
   window.ART_AUTH_NEXT = {{ next_url|default('/dashboard')|tojson }};
 </script>
-<script src="/static/js/app.js?v=20261026-auth-demo-buy-inline"></script>
+<script src="/static/js/app.js?v=20261027-auth-layout-controls"></script>
 {% block page_script %}{% endblock %}
 </body>
 </html>

@@ -156,7 +156,7 @@ def test_checkout_return_page_never_claims_payment_before_verification():
     assert 'data-checkout-status="verify"' in response.text
     assert "the Checkout Session with Stripe" in response.text
     assert "Your checkout is complete." not in response.text
-    assert "/static/js/app.js?v=20261026-auth-demo-buy-inline" in response.text
+    assert "/static/js/app.js?v=20261027-auth-layout-controls" in response.text
 
 
 def test_stripe_session_retrieval_uses_authenticated_stripe_api(monkeypatch):
@@ -682,3 +682,29 @@ def test_theme_preference_migrates_to_vincent_key_without_losing_old_setting():
     assert "localStorage.getItem('vincentThemePreference') ?? localStorage.getItem('artcoThemePreference')" in base
     assert "localStorage.setItem('vincentThemePreference', savedTheme)" in base
     assert "localStorage.setItem('vincentThemePreference', theme)" in js
+
+
+def test_signin_header_controls_are_right_aligned_and_auth_copy_is_minimal():
+    from pathlib import Path
+    root = Path(__file__).parent
+    base = (root / "templates/base.html").read_text()
+    auth = (root / "templates/auth.html").read_text()
+    css = (root / "static/css/style.css").read_text()
+    assert "topbar--auth" in base
+    assert "{% if page != 'auth' %}" in base
+    assert "Sign in to continue to your art concierge." not in auth
+    assert "Demo access is prefilled." not in auth
+    assert ".topbar--auth {" in css and "grid-template-columns: minmax(0, 1fr) auto;" in css
+    assert ".topbar--auth .topbar-actions" in css and "grid-column: 2;" in css and "justify-self: end;" in css
+
+
+def test_concierge_service_and_region_selectors_share_desktop_row():
+    from pathlib import Path
+    root = Path(__file__).parent
+    html = (root / "templates/concierge.html").read_text()
+    css = (root / "static/css/style.css").read_text()
+    assert '<div class="service-select-control">' in html
+    assert 'id="marketScopeControl"' in html
+    assert ".concierge-page .concierge-service-control" in css
+    assert "display: grid;" in css and "grid-template-columns: repeat(2, minmax(0, 1fr));" in css
+    assert ".concierge-page .service-description" in css and "grid-column: 1 / -1;" in css
