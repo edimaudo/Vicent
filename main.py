@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import logging
+import secrets
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urljoin
@@ -45,15 +48,68 @@ CONCIERGE_IMAGE_RESPONSE_TIMEOUT_SECONDS = 17.5
 app = FastAPI(
     title="Vincent | Your personal art concierge",
     description="Vincent is a personal art concierge for cultural discovery, artwork research, curation and acquisition.",
-    version="0.4.0",
+    version="0.4.1",
 )
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+
+def _template_context(request: Request) -> dict[str, Any]:
+    # Render the account controls server-side to avoid briefly showing stale auth state.
+    return {"current_user": _current_user(request)}
+
+
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[_template_context])
+_DEMO_SESSION_SECRET = (
+    config.VINCENT_DEMO_SESSION_SECRET.encode("utf-8")
+    if config.VINCENT_DEMO_SESSION_SECRET
+    else secrets.token_bytes(32)
+)
+
+
+def _create_demo_session() -> str:
+    """Issue a short, signed demo cookie without requiring a database."""
+    payload = f"demo.{int(time.time())}.{secrets.token_urlsafe(24)}"
+    signature = hmac.new(_DEMO_SESSION_SECRET, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload}.{signature}"
+
+
+def _demo_user_for_session(token: str | None) -> dict[str, Any] | None:
+    if not token:
+        return None
+    parts = token.split(".")
+    if len(parts) != 4 or parts[0] != "demo":
+        return None
+    payload = ".".join(parts[:3])
+    expected = hmac.new(_DEMO_SESSION_SECRET, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(parts[3], expected):
+        return None
+    try:
+        created_at = int(parts[1])
+    except ValueError:
+        return None
+    now = int(time.time())
+    if created_at > now + 60 or now - created_at > 60 * 60 * 24 * 30:
+        return None
+    return {
+        "id": "vincent-demo-user",
+        "email": config.VINCENT_DEMO_EMAIL,
+        "name": config.VINCENT_DEMO_NAME,
+        "demo": True,
+    }
+
+
+def _is_demo_user(user: dict[str, Any] | None) -> bool:
+    return bool(user and user.get("demo") is True)
 
 
 def _current_user(request: Request) -> dict[str, Any] | None:
     token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not token or not config.DATABASE_URL:
+    if not token:
+        return None
+    demo_user = _demo_user_for_session(token)
+    if demo_user:
+        return demo_user
+    if not config.DATABASE_URL:
         return None
     try:
         return get_user_for_session(token)
@@ -86,7 +142,7 @@ def _enrich_request_from_account(payload: ConciergeRequest, user: dict[str, Any]
     ideas are added only when the user explicitly personalizes Explore, so a normal
     Find request is not silently turned into a taste-based search.
     """
-    if not user:
+    if not user or _is_demo_user(user):
         return payload
     try:
         stored_profile = get_profile(user["id"]).get("profile") or {}
@@ -187,7 +243,8 @@ def _safe_next(value: str | None, fallback: str = "/dashboard") -> str:
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request=request, name="index.html", context={"page": "home"})
+    user = _current_user(request)
+    return templates.TemplateResponse(request=request, name="index.html", context={"page": "home", "current_user": user})
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -197,22 +254,27 @@ async def login_page(request: Request) -> HTMLResponse:
         return RedirectResponse(url=_safe_next(request.query_params.get("next")), status_code=303)
     return templates.TemplateResponse(request=request, name="auth.html", context={
         "page": "auth", "auth_mode": "login", "next_url": _safe_next(request.query_params.get("next")),
-        "database_configured": bool(config.DATABASE_URL),
+        "database_configured": bool(config.DATABASE_URL), "demo_email": config.VINCENT_DEMO_EMAIL,
+        "demo_password": config.VINCENT_DEMO_PASSWORD,
     })
 
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request) -> HTMLResponse:
+    if not config.DATABASE_URL:
+        return RedirectResponse(url=f"/login?next={quote(_safe_next(request.query_params.get('next')), safe='')}", status_code=303)
     return templates.TemplateResponse(request=request, name="auth.html", context={
         "page": "auth", "auth_mode": "register", "next_url": _safe_next(request.query_params.get("next")),
-        "database_configured": bool(config.DATABASE_URL),
+        "database_configured": bool(config.DATABASE_URL), "demo_email": config.VINCENT_DEMO_EMAIL,
+        "demo_password": config.VINCENT_DEMO_PASSWORD,
     })
 
 
 @app.get("/api/auth/me")
 async def auth_me(request: Request) -> JSONResponse:
     user = _current_user(request)
-    return JSONResponse({"authenticated": bool(user), "user": user, "database_configured": bool(config.DATABASE_URL)})
+    return JSONResponse({"authenticated": bool(user), "user": user, "database_configured": bool(config.DATABASE_URL),
+                         "demo_mode": _is_demo_user(user)})
 
 
 @app.post("/api/auth/register")
@@ -239,10 +301,18 @@ async def auth_register(payload: dict[str, Any], request: Request) -> JSONRespon
 
 @app.post("/api/auth/login")
 async def auth_login(payload: dict[str, Any], request: Request) -> JSONResponse:
+    email = str(payload.get("email") or "").strip().casefold()
+    password = str(payload.get("password") or "")
+    if email == config.VINCENT_DEMO_EMAIL and password == config.VINCENT_DEMO_PASSWORD:
+        user = {"id": "vincent-demo-user", "email": config.VINCENT_DEMO_EMAIL,
+                "name": config.VINCENT_DEMO_NAME, "demo": True}
+        response = JSONResponse({"success": True, "user": user, "demo_mode": True})
+        _set_session_cookie(response, request, _create_demo_session())
+        return response
     if not config.DATABASE_URL:
-        return JSONResponse({"success": False, "detail": "Accounts are not available until persistent database storage is configured."}, status_code=503)
+        return JSONResponse({"success": False, "detail": "Those credentials did not match the Vincent demo account."}, status_code=401)
     try:
-        user = authenticate_user(str(payload.get("email") or ""), str(payload.get("password") or ""))
+        user = authenticate_user(email, password)
         if not user:
             return JSONResponse({"success": False, "detail": "Email or password is incorrect."}, status_code=401)
         token = create_session(user["id"])
@@ -264,11 +334,27 @@ async def auth_logout(request: Request) -> JSONResponse:
     return response
 
 
+@app.get("/logout")
+async def logout_page(request: Request) -> RedirectResponse:
+    """Keep the visible sign-out link functional when JavaScript is unavailable."""
+    try:
+        delete_session(request.cookies.get(SESSION_COOKIE_NAME))
+    except DatabaseUnavailable:
+        pass
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/", httponly=True, secure=_cookie_secure(request), samesite="lax")
+    return response
+
+
 @app.get("/api/account/state")
 async def account_state(request: Request) -> JSONResponse:
     user = _current_user(request)
     if not user:
         return JSONResponse({"success": False, "detail": "Sign in to access your account library."}, status_code=401)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "user": user, "profile": None,
+                             "profile_updated_at": None, "saved": [], "recent": [], "purchases": [],
+                             "demo_mode": True})
     try:
         profile_data = get_profile(user["id"])
         saved = list_saved_artworks(user["id"])
@@ -292,6 +378,8 @@ async def account_profile_save(payload: dict[str, Any], request: Request) -> JSO
     user = _current_user(request)
     if not user:
         return JSONResponse({"success": False, "detail": "Sign in to save your taste profile across devices."}, status_code=401)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "demo_mode": True, "detail": "Demo profile stays in this browser."})
     try:
         result = save_profile(user["id"], payload)
     except DatabaseUnavailable as exc:
@@ -304,6 +392,8 @@ async def account_saved_action(payload: dict[str, Any], request: Request) -> JSO
     user = _current_user(request)
     if not user:
         return JSONResponse({"success": False, "detail": "Sign in to sync saved artworks across devices."}, status_code=401)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "demo_mode": True, "detail": "Saved artworks stay in this browser."})
     action = str(payload.get("action") or "save")
     try:
         if action == "remove":
@@ -324,6 +414,8 @@ async def account_orders(request: Request) -> JSONResponse:
     user = _current_user(request)
     if not user:
         return JSONResponse({"success": False, "detail": "Sign in to access purchase history."}, status_code=401)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "orders": [], "demo_mode": True})
     try:
         orders = [_order_client_record(order) for order in list_orders(user["id"])]
     except DatabaseUnavailable as exc:
@@ -1104,7 +1196,7 @@ async def concierge(payload: ConciergeRequest, request: Request) -> JSONResponse
         secondary = list(result.get("not_for_sale") or [])[:remaining] if payload.intent.value == "buy" else []
         result["results"] = primary
         result["not_for_sale"] = secondary
-        if user:
+        if user and not _is_demo_user(user):
             try:
                 save_recent_search(user["id"], payload.intent.value, payload.goal, result)
             except Exception as exc:

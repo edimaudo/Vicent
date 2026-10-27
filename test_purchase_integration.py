@@ -89,6 +89,7 @@ def test_register_login_profile_saved_artwork_purchase_history_and_logout(monkey
     login = client.post("/api/auth/login", json={"email": "BUYER@example.com", "password": PASSWORD})
     assert login.status_code == 200
     assert client.get("/api/account/state").json()["saved"][0]["id"] == "artmatch:test-work"
+    client.close()
 
 
 def test_auth_routes_fail_closed_when_persistent_database_is_not_configured(monkeypatch):
@@ -374,6 +375,9 @@ def test_concierge_region_selector_defaults_to_canada_and_hides_in_learn():
     js = (Path(__file__).resolve().parent / "static/js/app.js").read_text()
     assert "region_scope: ['CA', 'US', 'BOTH'].includes(state.preferences.regionScope) ? state.preferences.regionScope : 'CA'" in js
     assert "if (marketScopeControl) marketScopeControl.hidden = state.intent === 'learn';" in js
+    css = (Path(__file__).resolve().parent / "static/css/style.css").read_text()
+    assert "grid-template-columns: minmax(150px, max-content) minmax(0, 270px);" in css
+    assert ".concierge-service-control .market-scope-control label" in css
 
 
 def test_general_art_cards_do_not_name_the_payment_processor():
@@ -396,3 +400,76 @@ def test_payments_section_is_the_only_general_ui_section_that_announces_sandbox_
     assert 'PayPal and Stripe payments, invoices' not in dashboard
     concierge = client.get('/concierge').text
     assert 'PayPal' not in concierge
+
+
+def test_demo_signin_works_without_database_and_shows_authenticated_header(monkeypatch):
+    reset_engine_cache()
+    monkeypatch.setattr(config, "DATABASE_URL", "")
+    client = TestClient(main.app)
+
+    landing = client.get("/")
+    landing_soup = BeautifulSoup(landing.text, "html.parser")
+    cta = landing_soup.select_one("#homeConciergeCta")
+    assert cta is not None
+    assert cta["href"] == "/login?next=%2Fconcierge"
+    assert landing_soup.select_one('a[href="/concierge?intent=buy&new=1"]') is not None
+    assert "buy art from connected galleries" in landing.text.lower()
+
+    login_page = client.get("/login?next=%2Fconcierge")
+    login_soup = BeautifulSoup(login_page.text, "html.parser")
+    assert login_soup.select_one("#authForm") is not None
+    assert "Account access is not available yet" not in login_page.text
+    assert "New to Vincent?" not in login_page.text
+    assert login_soup.select_one("nav.primary-nav") is None
+    assert login_soup.select_one("#authEmail")["value"] == config.VINCENT_DEMO_EMAIL
+    assert login_soup.select_one("#authPassword")["value"] == config.VINCENT_DEMO_PASSWORD
+
+    signin = client.post("/api/auth/login", json={
+        "email": config.VINCENT_DEMO_EMAIL,
+        "password": config.VINCENT_DEMO_PASSWORD,
+    })
+    assert signin.status_code == 200
+    assert signin.json()["demo_mode"] is True
+    session = client.get("/api/auth/me").json()
+    assert session["authenticated"] is True
+    assert session["user"]["name"] == config.VINCENT_DEMO_NAME
+    account_state = client.get("/api/account/state")
+    assert account_state.status_code == 200
+    assert account_state.json()["demo_mode"] is True
+
+    home_signed_in = client.get("/")
+    home_soup = BeautifulSoup(home_signed_in.text, "html.parser")
+    assert "Welcome, Demo" in home_signed_in.text
+    assert home_soup.select_one("#logoutButton:not([hidden])") is not None
+    assert home_soup.select_one("#homeConciergeCta")["href"] == "/concierge"
+
+    redirected = client.get("/login?next=%2Fconcierge", follow_redirects=False)
+    assert redirected.status_code == 303
+    assert redirected.headers["location"] == "/concierge"
+
+    signed_out = client.get("/logout", follow_redirects=False)
+    assert signed_out.status_code == 303
+    assert signed_out.headers["location"] == "/"
+    assert client.get("/api/auth/me").json()["authenticated"] is False
+    client.close()
+
+
+def test_demo_account_mutations_do_not_require_database(monkeypatch):
+    monkeypatch.setattr(config, "DATABASE_URL", "")
+    client = TestClient(main.app)
+    signin = client.post("/api/auth/login", json={
+        "email": config.VINCENT_DEMO_EMAIL,
+        "password": config.VINCENT_DEMO_PASSWORD,
+    })
+    assert signin.status_code == 200
+    profile = client.put("/api/account/profile", json={"loves": ["colour"]})
+    assert profile.status_code == 200
+    saved = client.post("/api/account/saved", json={"action": "save", "artwork": {"id": "demo-1"}})
+    assert saved.status_code == 200
+    orders = client.get("/api/orders")
+    assert orders.status_code == 200
+    assert orders.json()["orders"] == []
+    logout = client.post("/api/auth/logout")
+    assert logout.status_code == 200
+    assert client.get("/api/auth/me").json()["authenticated"] is False
+    client.close()

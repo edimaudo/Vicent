@@ -109,12 +109,17 @@
   function updateAuthControls() {
     const link = $('#authLink');
     const logout = $('#logoutButton');
+    const conciergeCta = $('#homeConciergeCta');
+    const email = String(state.user?.email || '');
+    const fallbackName = email.includes('@') ? email.split('@')[0].replace(/[._-]+/g, ' ') : 'there';
+    const displayName = String(state.user?.name || fallbackName).trim().replace(/\b\w/g, (character) => character.toUpperCase()) || 'there';
     if (link) {
-      link.textContent = state.user ? 'Account' : 'Sign in';
+      link.textContent = state.user ? `Welcome, ${displayName}` : 'Sign in';
       link.href = state.user ? '/dashboard' : `/login?next=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`;
       link.title = state.user?.email || 'Sign in to Vincent';
     }
     if (logout) logout.hidden = !state.user;
+    if (conciergeCta) conciergeCta.href = state.user ? '/concierge' : '/login?next=%2Fconcierge';
   }
 
   async function syncProfileToServer() {
@@ -450,8 +455,9 @@
   }
 
   function setupGlobalControls() {
-    $('#logoutButton')?.addEventListener('click', async () => {
-      try { await fetch('/api/auth/logout', { method: 'POST', headers: { Accept: 'application/json' } }); } catch (_) {}
+    $('#logoutButton')?.addEventListener('click', async (event) => {
+      event.preventDefault();
+      try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json' } }); } catch (_) {}
       state.user = null;
       updateAuthControls();
       window.location.assign('/');

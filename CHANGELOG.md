@@ -1,3 +1,21 @@
+## 2026-10-26 — Landing page, sign-in, and MVP demo account
+
+- Added a Buy art card to **What can I help you with?** and updated the landing-page description to explicitly include buying art from connected galleries.
+- The **Ask my concierge** call to action routes signed-out visitors to sign-in with a return path to Concierge, while signed-in visitors go directly to Concierge.
+- Header account state now displays **Welcome, [user]** and a **Sign out** link after sign-in. Added a non-JavaScript sign-out route as a fallback.
+- Simplified the sign-in page: removed the database availability warning and the account-creation prompt, and hid Dashboard, Concierge, and Saved ArtWorks navigation from the auth page.
+- Added a prefilled demo account that works without `DATABASE_URL`. Demo session cookies are signed; demo profile and saved-artwork activity remain browser-local and are not shared or private. Registered persistent accounts still require `DATABASE_URL`.
+- Aligned the **Where should we look?** label and region dropdown on the same row on desktop and most mobile widths.
+- Added regression tests for demo sign-in without a database, authenticated landing-page state, CTA routing, and auth-page simplification.
+
+### Verification
+
+- `pytest -q` — 129 passed.
+- `node --check static/js/app.js` — passed.
+- `python -m compileall -q .` — passed.
+
+---
+
 ## 2026-10-25 — Rebrand to Vincent
 
 - Rebranded visible application copy, page titles, metadata, authentication, dashboard, search errors, image-processing messages, and payment branding from ArtCo to Vincent.

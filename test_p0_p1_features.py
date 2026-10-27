@@ -156,7 +156,7 @@ def test_checkout_return_page_never_claims_payment_before_verification():
     assert 'data-checkout-status="verify"' in response.text
     assert "the Checkout Session with Stripe" in response.text
     assert "Your checkout is complete." not in response.text
-    assert "/static/js/app.js?v=20261025-vincent-brand" in response.text
+    assert "/static/js/app.js?v=20261026-auth-demo-buy-inline" in response.text
 
 
 def test_stripe_session_retrieval_uses_authenticated_stripe_api(monkeypatch):
@@ -487,8 +487,8 @@ def test_concierge_exposes_five_modes_including_buy():
     assert '<option value="taste">' not in html
     assert 'id="personalizeExplore"' in html
     assert 'Develop my taste</strong>' not in home
-    assert home.count('class="service-card"') == 4
-    assert 'intent=buy' not in home
+    assert home.count('class="service-card"') == 5
+    assert 'intent=buy' in home
     assert 'Choose a service. Your concierge keeps the context as you return.' not in home
 
 

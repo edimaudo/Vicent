@@ -54,7 +54,7 @@ a { color: inherit; }
 .topbar--landing { grid-template-columns: 1fr auto; }
 .brand {
   justify-self: start;
-  font-size: 1.5rem;
+  font-size: .84rem;
   font-weight: 700;
   letter-spacing: .16em;
   text-decoration: none;
@@ -1677,3 +1677,48 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .payment-mode-note { margin-top: 6px; color: var(--muted); font-size: .84rem; }
 @media (max-width: 640px) { .market-scope-control { align-items: stretch; flex-direction: column; gap: 6px; } .market-scope-control label { min-width: 0; } .market-scope-control select { width: 100%; } }
 .market-scope-control[hidden] { display: none !important; }
+
+
+/* 2026-10-26: clear account state, demo sign-in, and inline region selector. */
+.account-logout-link {
+  color: var(--text);
+  font-size: .88rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.account-logout-link:hover, .account-logout-link:focus-visible { text-decoration: underline; }
+.account-logout-link[hidden] { display: none !important; }
+.demo-account-note {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: .88rem;
+  line-height: 1.5;
+}
+.market-scope-control {
+  display: grid;
+  grid-template-columns: minmax(150px, max-content) minmax(0, 270px);
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 560px);
+}
+.concierge-service-control .market-scope-control label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  white-space: nowrap;
+}
+.market-scope-control select { width: 100%; min-width: 0; }
+@media (max-width: 640px) {
+  .market-scope-control { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 8px; }
+  .concierge-service-control .market-scope-control label { font-size: .82rem; }
+  .market-scope-control select { font-size: .84rem; }
+}
+@media (max-width: 360px) {
+  .market-scope-control { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .concierge-service-control .market-scope-control label { white-space: normal; }
+}

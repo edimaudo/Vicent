@@ -230,8 +230,8 @@ def test_concierge_api_caps_all_visible_artwork_cards_to_three(monkeypatch):
 def test_static_assets_are_versioned_to_avoid_stale_result_caps():
     from pathlib import Path
     html = (Path(__file__).resolve().parent / "templates/base.html").read_text()
-    assert "/static/js/app.js?v=20261025-vincent-brand" in html
-    assert "/static/css/style.css?v=20261025-vincent-brand" in html
+    assert "/static/js/app.js?v=20261026-auth-demo-buy-inline" in html
+    assert "/static/css/style.css?v=20261026-auth-demo-buy-inline" in html
 
 
 def test_artlogic_cloudfront_cdn_is_proxyable():

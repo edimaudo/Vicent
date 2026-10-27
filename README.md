@@ -1,6 +1,6 @@
 # Vincent | Art Concierge
 
-> **Build update — 25 October 2026**
+> **Build update — 26 October 2026**
 > This source package includes required sequential image search, request-only image handling, a three-card total, image-proxy recovery, and consistent internal-page spacing. See `CHANGELOG.md` for changes and verification.
 
 A user-centric art concierge that combines broader cultural taste signals from Qloo with artwork research across commercial and institutional sources.
@@ -55,7 +55,7 @@ The Qloo implementation does not use the unsupported `/recommendations` or `/rec
 
 ### Account and purchasing
 
-Email/password accounts use server-side sessions with an HttpOnly cookie. Taste profiles, saved artworks, recent requests, and purchase/checkout records are stored in a configured SQLAlchemy database. For production use, configure managed PostgreSQL through `DATABASE_URL`; local SQLite is supported for tests only. Passwords are stored as scrypt hashes.
+Email/password accounts use server-side sessions with an HttpOnly cookie. For an MVP walkthrough, the sign-in page pre-fills a demo account (`demo@vincent.art` / `vincent-demo-2026` by default), which works without a database. Demo profile edits and saved artwork remain in the current browser; they are not private or shared across devices. Configure `DATABASE_URL` for persistent registered accounts, profiles, saved artworks, recent requests, and order history. For production use, configure managed PostgreSQL through `DATABASE_URL`; local SQLite is supported for tests only. Passwords for registered accounts are stored as scrypt hashes. Configure `VINCENT_DEMO_EMAIL`, `VINCENT_DEMO_PASSWORD`, and a strong `VINCENT_DEMO_SESSION_SECRET` before deploying a demo-enabled instance; the signing key is generated per process when the secret is omitted.
 
 Purchasing supports seller redirection, Stripe Checkout catalog entries, and PayPal Orders v2 plus PayPal invoicing. PayPal secrets remain server-side. Seller listings use their own checkout by default. Vincent-managed PayPal checkout/invoices are only enabled for server catalog rows that explicitly set `direct_checkout_approved: true`, define a fixed amount/currency, and are approved for Vincent merchant processing. This prevents Vincent from collecting payment for a third-party gallery without explicit authorization/onboarding. Use `ARTCO_PAYPAL_CATALOG` to define approved rows, keyed by the artwork ID or matched by exact `source_url`. Each approved row must include a fixed `amount`, `currency`, seller/title metadata, and `direct_checkout_approved: true`; do not set this flag unless the seller is formally authorized and inventory/fulfilment responsibilities are agreed. Example: `{"artmatch:approved-work":{"source_url":"https://artmatch.ca/canadian-art-for-sale/blue-garden","amount":"1200.00","currency":"CAD","title":"Blue Garden","artist":"Artist Name","seller_name":"Approved Gallery","direct_checkout_approved":true}}`. PayPal invoices also require `PAYPAL_INVOICE_EMAIL`. These are real payment integrations, but live transactions require the merchant credentials and seller agreements to be configured and tested.
 
@@ -110,7 +110,7 @@ The frontend keeps taste, saved works, recent requests, the latest result, purch
 
 ## Persistent user relationship
 
-The current MVP keeps the concierge relationship in browser storage so a user can return to the same browser and retain their taste references, avoid references, saved works, recent requests, and latest result. This deliberately avoids introducing authentication or a database before account requirements are defined. The dashboard resumes prior requests by restoring the original brief into the concierge workspace.
+The demo account lets reviewers explore account-aware navigation without configuring a database. In demo mode, Vincent keeps taste references, saved works, and recent requests in browser storage; shared demo credentials are not private and demo activity is not persisted across devices. Configure `DATABASE_URL` to enable persistent registered accounts and cross-device account storage. The dashboard resumes prior requests by restoring the original brief into the concierge workspace.
 
 ## Commercial acquisition and payments
 

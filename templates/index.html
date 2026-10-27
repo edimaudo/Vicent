@@ -5,8 +5,8 @@
   <div class="home-intro">
     <div class="home-copy">
       <h1>Your personal art concierge.</h1>
-      <p class="lede">Vincent is a personal art concierge that helps you explore new directions, find specific work, curate a collection, acquire art, and learn more about what you love.</p>
-      <a class="primary-button cta-button" href="/concierge">Ask my concierge <span aria-hidden="true">→</span></a>
+      <p class="lede">Vincent is a personal art concierge that helps you explore new directions, find specific works, curate a collection, buy art from connected galleries, and learn more about what you love.</p>
+      <a class="primary-button cta-button" id="homeConciergeCta" href="{% if current_user %}/concierge{% else %}/login?next=%2Fconcierge{% endif %}">Ask my concierge <span aria-hidden="true">→</span></a>
     </div>
   </div>
 
@@ -18,6 +18,7 @@
       <a class="service-card" href="/concierge?intent=discover&new=1"><strong>Explore art</strong><span>Discover surprising connections, with optional saved-taste personalization.</span></a>
       <a class="service-card" href="/concierge?intent=find&new=1"><strong>Find art</strong><span>Search for a particular artist, artwork, style, or subject.</span></a>
       <a class="service-card" href="/concierge?intent=curate&new=1"><strong>Curate a collection</strong><span>Bring purchasable works together around a space, idea, or mood.</span></a>
+      <a class="service-card" href="/concierge?intent=buy&new=1"><strong>Buy art</strong><span>Find artwork available to acquire from connected galleries and seller listings.</span></a>
       <a class="service-card" href="/concierge?intent=learn&new=1"><strong>Learn about art</strong><span>Go deeper on an artist, artwork, movement, or idea.</span></a>
     </div>
   </section>

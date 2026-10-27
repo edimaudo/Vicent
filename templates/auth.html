@@ -4,17 +4,17 @@
 <section class="workspace-page shell auth-page" aria-labelledby="authHeading">
   <div class="auth-card">
     <h1 id="authHeading">{% if auth_mode == 'register' %}Create your Vincent account{% else %}Sign in to Vincent{% endif %}</h1>
-    <p class="lede">Keep your taste profile, saved artwork, and purchase history available across your devices.</p>
-    {% if not database_configured %}<p class="auth-status" role="status">Account access is not available yet.</p>{% endif %}
+    <p class="lede">Sign in to continue to your art concierge.</p>
+    {% if auth_mode != 'register' %}<p class="demo-account-note">Demo access is prefilled. Select <strong>Sign in</strong> to continue. Demo profile and saved items stay in this browser. Shared demo credentials are not private or shared across devices.</p>{% endif %}
     <form id="authForm" data-mode="{{ auth_mode }}">
       <label for="authEmail">Email</label>
-      <input id="authEmail" name="email" type="email" autocomplete="email" required maxlength="254" placeholder="you@example.com">
+      <input id="authEmail" name="email" type="email" autocomplete="email" required maxlength="254" placeholder="you@example.com" value="{% if auth_mode != 'register' %}{{ demo_email }}{% endif %}">
       <label for="authPassword">Password</label>
-      <input id="authPassword" name="password" type="password" autocomplete="{% if auth_mode == 'register' %}new-password{% else %}current-password{% endif %}" required minlength="10" maxlength="256" placeholder="At least 10 characters">
+      <input id="authPassword" name="password" type="password" autocomplete="{% if auth_mode == 'register' %}new-password{% else %}current-password{% endif %}" required minlength="10" maxlength="256" placeholder="At least 10 characters" value="{% if auth_mode != 'register' %}{{ demo_password }}{% endif %}">
       <p id="authMessage" class="action-message" role="status" aria-live="polite"></p>
       <button class="primary-button auth-submit" id="authSubmit" type="submit">{% if auth_mode == 'register' %}Create account{% else %}Sign in{% endif %} <span aria-hidden="true">→</span></button>
     </form>
-    <p class="auth-switch">{% if auth_mode == 'register' %}Already have an account? <a href="/login?next={{ next_url|urlencode }}">Sign in</a>{% else %}New to Vincent? <a href="/register?next={{ next_url|urlencode }}">Create an account</a>{% endif %}</p>
+    {% if auth_mode == 'register' %}<p class="auth-switch">Already have an account? <a href="/login?next={{ next_url|urlencode }}">Sign in</a></p>{% endif %}
   </div>
 </section>
 {% endblock %}
