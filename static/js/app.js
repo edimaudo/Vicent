@@ -1380,8 +1380,10 @@
       sessionId,
       provider: String(data.provider || existing.provider || 'stripe'),
       artworkId,
-      title: existing.title || artworkId || 'Artwork checkout',
-      artist: existing.artist || 'Artist not provided',
+      title: String(data.title || existing.title || artworkId || 'Artwork checkout'),
+      artist: String(data.artist || existing.artist || 'Artist not provided'),
+      sellerName: String(data.seller_name || existing.sellerName || ''),
+      sourceUrl: String(data.source_url || existing.sourceUrl || ''),
       checkoutStatus,
       paymentStatus,
       amountTotal: data.amount_total ?? existing.amountTotal ?? null,
@@ -1469,7 +1471,7 @@
       });
       window.location.assign(data.checkout_url);
     } catch (error) {
-      if (message) message.textContent = 'Secure checkout could not be started. Try the seller’s purchasing options or try again later.';
+      if (message) message.textContent = error.message || 'PayPal Sandbox checkout could not be started. Try again later.';
       if (button) { button.disabled = false; button.textContent = 'Buy securely'; }
     }
   }

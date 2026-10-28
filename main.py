@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
+import json
 import logging
 import secrets
 from pathlib import Path
@@ -207,6 +209,114 @@ def _set_session_cookie(response: Response, request: Request, token: str) -> Non
     )
 
 
+_DEMO_PAYPAL_COOKIE_PREFIX = "vincent_demo_pp_"
+_DEMO_PAYPAL_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
+_DEMO_PAYPAL_COOKIE_LIMIT = 3
+
+
+def _demo_paypal_cookie_name(order_id: str) -> str | None:
+    safe_id = re.sub(r"[^A-Za-z0-9_-]", "", str(order_id or ""))[:100]
+    return f"{_DEMO_PAYPAL_COOKIE_PREFIX}{safe_id}" if safe_id else None
+
+
+def _sign_demo_paypal_order(record: dict[str, Any]) -> str:
+    raw = json.dumps(record, separators=(",", ":"), ensure_ascii=False, sort_keys=True).encode("utf-8")
+    encoded = base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+    signature = hmac.new(_DEMO_SESSION_SECRET, encoded.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _read_signed_demo_paypal_order(token: str | None) -> dict[str, Any] | None:
+    if not token or "." not in token:
+        return None
+    encoded, signature = token.rsplit(".", 1)
+    expected = hmac.new(_DEMO_SESSION_SECRET, encoded.encode("ascii", errors="ignore"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        payload = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    now = int(time.time())
+    try:
+        if int(payload.get("expires_at") or 0) < now:
+            return None
+    except (TypeError, ValueError):
+        return None
+    if payload.get("provider") != "paypal" or not payload.get("provider_order_id"):
+        return None
+    return payload
+
+
+def _demo_paypal_orders_for_user(request: Request, user_id: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for name, value in request.cookies.items():
+        if not name.startswith(_DEMO_PAYPAL_COOKIE_PREFIX):
+            continue
+        record = _read_signed_demo_paypal_order(value)
+        if not record or record.get("user_id") != user_id:
+            continue
+        if name != _demo_paypal_cookie_name(str(record.get("provider_order_id") or "")):
+            continue
+        records.append(record)
+    records.sort(key=lambda item: float(item.get("created_at") or 0), reverse=True)
+    return records[:_DEMO_PAYPAL_COOKIE_LIMIT]
+
+
+def _demo_paypal_order_for_user(request: Request, user_id: str, order_id: str) -> dict[str, Any] | None:
+    cookie_name = _demo_paypal_cookie_name(order_id)
+    if not cookie_name:
+        return None
+    record = _read_signed_demo_paypal_order(request.cookies.get(cookie_name))
+    if not record or record.get("user_id") != user_id or record.get("provider_order_id") != order_id:
+        return None
+    return record
+
+
+def _set_demo_paypal_order_cookie(response: Response, request: Request, record: dict[str, Any]) -> None:
+    """Keep signed, short-lived demo checkout metadata in HttpOnly cookies when no database is used."""
+    order_id = str(record.get("provider_order_id") or "")
+    cookie_name = _demo_paypal_cookie_name(order_id)
+    if not cookie_name:
+        return
+    payload = dict(record)
+    payload["user_id"] = "vincent-demo-user"
+    payload["provider"] = "paypal"
+    payload["provider_order_id"] = order_id
+    payload["expires_at"] = int(time.time()) + _DEMO_PAYPAL_COOKIE_MAX_AGE
+    response.set_cookie(
+        key=cookie_name, value=_sign_demo_paypal_order(payload), max_age=_DEMO_PAYPAL_COOKIE_MAX_AGE,
+        path="/", httponly=True, secure=_cookie_secure(request), samesite="lax",
+    )
+    prior = [item for item in _demo_paypal_orders_for_user(request, "vincent-demo-user")
+             if str(item.get("provider_order_id") or "") != order_id]
+    keep = [payload, *prior]
+    keep.sort(key=lambda item: float(item.get("created_at") or 0), reverse=True)
+    for stale in keep[_DEMO_PAYPAL_COOKIE_LIMIT:]:
+        stale_name = _demo_paypal_cookie_name(str(stale.get("provider_order_id") or ""))
+        if stale_name:
+            response.delete_cookie(
+                key=stale_name, path="/", httponly=True,
+                secure=_cookie_secure(request), samesite="lax",
+            )
+
+
+def _checkout_base_url(request: Request) -> str:
+    configured = str(config.ARTCO_BASE_URL or "").strip().rstrip("/")
+    # Prefer an explicit public URL. If the default local-development URL is still
+    # present on Vercel, construct the URL from the request forwarded by the host.
+    if configured and not configured.startswith(("http://localhost", "http://127.0.0.1")):
+        return configured
+    host = request.headers.get("x-forwarded-host") or request.url.netloc
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",", 1)[0].strip().lower()
+    if host and proto in {"http", "https"} and host not in {"testserver", "localhost", "127.0.0.1"}:
+        return f"{proto}://{host}".rstrip("/")
+    return configured or "http://localhost:8000"
+
+
 def _order_client_record(order: dict[str, Any]) -> dict[str, Any]:
     amount = order.get("amount")
     try:
@@ -364,8 +474,9 @@ async def account_state(request: Request) -> JSONResponse:
     if not user:
         return JSONResponse({"success": False, "detail": "Sign in to access your account library."}, status_code=401)
     if _is_demo_user(user):
+        demo_purchases = [_order_client_record(item) for item in _demo_paypal_orders_for_user(request, user["id"])]
         return JSONResponse({"success": True, "user": user, "profile": None,
-                             "profile_updated_at": None, "saved": [], "recent": [], "purchases": [],
+                             "profile_updated_at": None, "saved": [], "recent": [], "purchases": demo_purchases,
                              "demo_mode": True})
     try:
         profile_data = get_profile(user["id"])
@@ -427,7 +538,8 @@ async def account_orders(request: Request) -> JSONResponse:
     if not user:
         return JSONResponse({"success": False, "detail": "Sign in to access purchase history."}, status_code=401)
     if _is_demo_user(user):
-        return JSONResponse({"success": True, "orders": [], "demo_mode": True})
+        demo_orders = [_order_client_record(item) for item in _demo_paypal_orders_for_user(request, user["id"])]
+        return JSONResponse({"success": True, "orders": demo_orders, "demo_mode": True})
     try:
         orders = [_order_client_record(order) for order in list_orders(user["id"])]
     except DatabaseUnavailable as exc:
@@ -560,14 +672,29 @@ async def paypal_create(payload: dict[str, Any], request: Request) -> JSONRespon
     entry = paypal_catalog_entry(artwork_id, source_url)
     if not entry:
         return JSONResponse({"success": False, "detail": "This listing uses the seller's checkout unless it has been explicitly approved for Vincent-managed PayPal payment."}, status_code=409)
-    base_url = config.ARTCO_BASE_URL.rstrip("/")
+    base_url = _checkout_base_url(request)
+    title = str(entry.get("title") or payload.get("title") or artwork_id)
+    artist = str(entry.get("artist") or payload.get("artist") or "")
+    seller_name = str(entry.get("seller_name") or payload.get("seller_name") or "Vincent-approved seller")
+    safe_source_url = str(entry.get("source_url") or source_url)
     try:
         order = await create_paypal_order(artwork_id, f"{base_url}/checkout/paypal/return", f"{base_url}/checkout/paypal/cancel", source_url=source_url)
+        order_record = {
+            "user_id": user["id"], "provider": "paypal", "provider_order_id": str(order["id"]),
+            "artwork_id": artwork_id[:180], "title": title[:180], "artist": artist[:120],
+            "seller_name": seller_name[:100], "source_url": safe_source_url[:500],
+            "status": "CREATED", "payment_status": "APPROVAL_PENDING",
+            "amount": float(entry["amount"]), "currency": str(entry["currency"]),
+            "metadata": {}, "created_at": time.time(),
+            "updated_at": time.time(),
+        }
+        if _is_demo_user(user):
+            response = JSONResponse({"success": True, "order_id": order["id"], "checkout_url": order["approval_url"]})
+            _set_demo_paypal_order_cookie(response, request, order_record)
+            return response
         save_order(user["id"], provider="paypal", provider_order_id=str(order["id"]), artwork_id=artwork_id,
-                   title=str(entry.get("title") or payload.get("title") or artwork_id),
-                   artist=str(entry.get("artist") or payload.get("artist") or ""),
-                   seller_name=str(entry.get("seller_name") or payload.get("seller_name") or "Vincent-approved seller"),
-                   source_url=str(entry.get("source_url") or source_url), status="CREATED", payment_status="APPROVAL_PENDING",
+                   title=title, artist=artist, seller_name=seller_name,
+                   source_url=safe_source_url, status="CREATED", payment_status="APPROVAL_PENDING",
                    amount=float(entry["amount"]), currency=str(entry["currency"]), metadata={"approval_url": order["approval_url"]})
     except PayPalConfigurationError as exc:
         return JSONResponse({"success": False, "detail": str(exc)}, status_code=409)
@@ -584,7 +711,8 @@ async def paypal_capture(order_id: str, request: Request) -> JSONResponse:
     if not user:
         return JSONResponse({"success": False, "detail": "Sign in to verify this PayPal payment."}, status_code=401)
     try:
-        owned = get_order_for_user(user["id"], order_id, provider="paypal")
+        owned = (_demo_paypal_order_for_user(request, user["id"], order_id) if _is_demo_user(user)
+                 else get_order_for_user(user["id"], order_id, provider="paypal"))
         if not owned:
             return JSONResponse({"success": False, "detail": "This PayPal order is not linked to your account."}, status_code=404)
         result = await capture_paypal_order(order_id)
@@ -597,6 +725,22 @@ async def paypal_capture(order_id: str, request: Request) -> JSONResponse:
         amount = money.get("value") if isinstance(money, dict) else None
         currency = money.get("currency_code") if isinstance(money, dict) else None
         payment_status = "PAID" if status == "COMPLETED" or str(capture.get("status") or "").upper() == "COMPLETED" else status
+        updated_record = {
+            **owned, "status": status, "payment_status": payment_status,
+            "amount": float(amount) if amount is not None else owned.get("amount"),
+            "currency": str(currency or owned.get("currency") or ""), "updated_at": time.time(),
+        }
+        if _is_demo_user(user):
+            response = JSONResponse({"success": True, "provider": "paypal", "session_id": order_id, "order_id": order_id,
+                                     "artwork_id": owned["artwork_id"], "title": owned.get("title", ""),
+                                     "artist": owned.get("artist", ""), "seller_name": owned.get("seller_name", ""),
+                                     "source_url": owned.get("source_url", ""), "status": status.lower(),
+                                     "payment_status": payment_status.lower(),
+                                     "amount_total": round(float(amount) * 100) if amount is not None else None,
+                                     "currency": str(currency or owned.get("currency") or "").lower(),
+                                     "created": owned.get("created_at")})
+            _set_demo_paypal_order_cookie(response, request, updated_record)
+            return response
         save_order(user["id"], provider="paypal", provider_order_id=order_id, artwork_id=owned["artwork_id"],
                    title=owned["title"], artist=owned["artist"], seller_name=owned["seller_name"], source_url=owned["source_url"],
                    status=status, payment_status=payment_status,
@@ -607,9 +751,11 @@ async def paypal_capture(order_id: str, request: Request) -> JSONResponse:
     except DatabaseUnavailable as exc:
         return JSONResponse({"success": False, "detail": str(exc)}, status_code=503)
     return JSONResponse({"success": True, "provider": "paypal", "session_id": order_id, "order_id": order_id,
-                         "artwork_id": owned["artwork_id"], "status": status.lower(), "payment_status": payment_status.lower(),
+                         "artwork_id": owned["artwork_id"], "title": owned.get("title", ""),
+                         "artist": owned.get("artist", ""), "seller_name": owned.get("seller_name", ""),
+                         "source_url": owned.get("source_url", ""), "status": status.lower(), "payment_status": payment_status.lower(),
                          "amount_total": round(float(amount) * 100) if amount is not None else None,
-                         "currency": str(currency or owned.get("currency") or "").lower()})
+                         "currency": str(currency or owned.get("currency") or "").lower(), "created": owned.get("created_at")})
 
 
 @app.post("/api/paypal/invoices")
@@ -617,6 +763,8 @@ async def paypal_invoice(payload: dict[str, Any], request: Request) -> JSONRespo
     user = _current_user(request)
     if not user:
         return JSONResponse({"success": False, "detail": "Sign in to request a PayPal invoice."}, status_code=401)
+    if not config.DATABASE_URL:
+        return JSONResponse({"success": False, "detail": "PayPal invoice tracking requires persistent order storage. Configure DATABASE_URL or use the seller's checkout."}, status_code=409)
     artwork_id = str(payload.get("artwork_id") or "").strip()
     source_url = str(payload.get("source_url") or "").strip()
     entry = paypal_catalog_entry(artwork_id, source_url)
@@ -1085,7 +1233,19 @@ async def diagnostics() -> dict[str, Any]:
             "model": config.GEMINI_MODEL,
         },
         "accounts": {"database_configured": bool(config.DATABASE_URL)},
-        "payments": {"stripe_configured": bool(config.STRIPE_SECRET_KEY), "paypal_configured": paypal_enabled(), "paypal_invoices_configured": invoice_enabled()},
+        "payments": {
+            "stripe_configured": bool(config.STRIPE_SECRET_KEY),
+            "paypal_configured": paypal_enabled(),
+            "paypal_invoices_configured": invoice_enabled(),
+            "paypal_mode": config.PAYPAL_MODE,
+            "paypal_region": config.PAYPAL_REGION,
+            "paypal_locale": config.PAYPAL_LOCALE,
+            "paypal_approved_catalog_items": sum(
+                1 for key, row in (config.PAYPAL_CATALOG.items() if isinstance(config.PAYPAL_CATALOG, dict) else [])
+                if isinstance(row, dict) and row.get("direct_checkout_approved") is True
+                and paypal_catalog_entry(str(key), str(row.get("source_url") or row.get("artwork_url") or ""))
+            ),
+        },
         "institutional_sources": {
             "art_institute_of_chicago": {"configured": True, "requires": []},
             "metropolitan_museum_of_art": {"configured": True, "requires": []},

@@ -12,7 +12,7 @@ from .image_proxy import display_image_url, is_allowed_detail_url, is_allowed_im
 from .llm import CandidateReview, RequestSignals, analyze_inspiration_images, extract_request_signals, generate_learning_guide, plan_art_searches
 from .qloo import get_artist_insights, search_entities
 from .payments import checkout_catalog_entry
-from .paypal_payments import invoice_enabled, paypal_catalog_entry
+from .paypal_payments import invoice_enabled, paypal_catalog_entry, paypal_enabled
 from . import config
 
 logger = logging.getLogger(__name__)
@@ -1574,8 +1574,8 @@ def _serialize(
         "seller_name": work.seller_name,
         "checkout_available": bool(checkout_catalog_entry(work.id)),
         "stripe_checkout_available": bool(checkout_catalog_entry(work.id)),
-        "paypal_checkout_available": bool(work.availability == "available" and work.source_kind == "commercial" and paypal_catalog_entry(work.id, work.detail_url)),
-        "paypal_invoice_available": bool(work.availability == "available" and work.source_kind == "commercial" and paypal_catalog_entry(work.id, work.detail_url) and invoice_enabled()),
+        "paypal_checkout_available": bool(paypal_enabled() and work.availability == "available" and work.source_kind == "commercial" and paypal_catalog_entry(work.id, work.detail_url)),
+        "paypal_invoice_available": bool(config.DATABASE_URL and invoice_enabled() and work.availability == "available" and work.source_kind == "commercial" and paypal_catalog_entry(work.id, work.detail_url)),
         "market_code": work.market_code,
         "availability_evidence": work.description if work.source_kind == "commercial" and work.availability == "available" else None,
         "price": work.price,

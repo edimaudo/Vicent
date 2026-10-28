@@ -37,7 +37,12 @@ VINCENT_DEMO_SESSION_SECRET = os.getenv("VINCENT_DEMO_SESSION_SECRET", "")
 PAYPAL_CLIENT_ID = os.getenv("PAYPAL_CLIENT_ID", "")
 PAYPAL_CLIENT_SECRET = os.getenv("PAYPAL_CLIENT_SECRET", "")
 PAYPAL_MODE = os.getenv("PAYPAL_MODE", "sandbox").strip().casefold()
+if PAYPAL_MODE not in {"sandbox", "live"}:
+    PAYPAL_MODE = "sandbox"
 PAYPAL_API_BASE = "https://api-m.paypal.com" if PAYPAL_MODE == "live" else "https://api-m.sandbox.paypal.com"
+PAYPAL_REGION = os.getenv("PAYPAL_REGION", "CA").strip().upper() or "CA"
+# PayPal checkout uses a BCP-47 locale to localize its hosted approval experience.
+PAYPAL_LOCALE = os.getenv("PAYPAL_LOCALE", f"en-{PAYPAL_REGION}").strip() or f"en-{PAYPAL_REGION}"
 PAYPAL_INVOICE_BUSINESS_NAME = os.getenv("PAYPAL_INVOICE_BUSINESS_NAME", "Vincent")
 PAYPAL_INVOICE_GIVEN_NAME = os.getenv("PAYPAL_INVOICE_GIVEN_NAME", "Vincent")
 PAYPAL_INVOICE_SURNAME = os.getenv("PAYPAL_INVOICE_SURNAME", "Vincent")

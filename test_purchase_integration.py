@@ -494,3 +494,156 @@ def test_demo_account_mutations_do_not_require_database(monkeypatch):
     assert logout.status_code == 200
     assert client.get("/api/auth/me").json()["authenticated"] is False
     client.close()
+
+
+def test_paypal_orders_use_canadian_sandbox_payment_source_context(monkeypatch):
+    import asyncio
+    import services.paypal_payments as paypal
+
+    source_url = "https://artmatch.ca/canadian-art-for-sale/blue-garden"
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_ID", "sandbox-client-id")
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_SECRET", "sandbox-secret")
+    monkeypatch.setattr(config, "PAYPAL_MODE", "sandbox")
+    monkeypatch.setattr(config, "PAYPAL_API_BASE", "https://api-m.sandbox.paypal.com")
+    monkeypatch.setattr(config, "PAYPAL_REGION", "CA")
+    monkeypatch.setattr(config, "PAYPAL_LOCALE", "en-CA")
+    monkeypatch.setattr(config, "PAYPAL_CATALOG", {
+        "approved-work": {
+            "source_url": source_url, "amount": "500.00", "currency": "CAD",
+            "title": "Blue Garden", "direct_checkout_approved": True,
+        }
+    })
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+            self.content = b"json"
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return False
+        async def post(self, url, **kwargs):
+            calls.append((url, kwargs))
+            if url.endswith("/v1/oauth2/token"):
+                return FakeResponse(200, {"access_token": "sandbox-access-token"})
+            if url.endswith("/v2/checkout/orders"):
+                return FakeResponse(201, {
+                    "id": "SANDBOX-ORDER-CA-1",
+                    "links": [{"rel": "approve", "href": "https://www.sandbox.paypal.com/checkoutnow?token=SANDBOX-ORDER-CA-1"}],
+                })
+            raise AssertionError(f"Unexpected PayPal endpoint: {url}")
+
+    monkeypatch.setattr(paypal.httpx, "AsyncClient", FakeClient)
+    result = asyncio.run(paypal.create_order(
+        "artmatch:blue-garden", "https://vincent.example/checkout/paypal/return",
+        "https://vincent.example/checkout/paypal/cancel", source_url=source_url,
+    ))
+
+    assert result["id"] == "SANDBOX-ORDER-CA-1"
+    assert result["approval_url"].startswith("https://www.sandbox.paypal.com/")
+    assert calls[0][0] == "https://api-m.sandbox.paypal.com/v1/oauth2/token"
+    assert calls[1][0] == "https://api-m.sandbox.paypal.com/v2/checkout/orders"
+    body = calls[1][1]["json"]
+    context = body["payment_source"]["paypal"]["experience_context"]
+    assert body["purchase_units"][0]["amount"]["currency_code"] == "CAD"
+    assert context["locale"] == "en-CA"
+    assert context["return_url"] == "https://vincent.example/checkout/paypal/return"
+    assert context["cancel_url"] == "https://vincent.example/checkout/paypal/cancel"
+    assert "application_context" not in body
+
+
+def test_demo_paypal_checkout_and_capture_work_without_database(monkeypatch):
+    monkeypatch.setattr(config, "DATABASE_URL", "")
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_ID", "sandbox-client-id")
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_SECRET", "sandbox-secret")
+    source_url = "https://artmatch.ca/canadian-art-for-sale/blue-garden"
+    monkeypatch.setattr(config, "PAYPAL_CATALOG", {
+        "approved-artmatch-work": {
+            "source_url": source_url, "amount": "500.00", "currency": "CAD",
+            "title": "Blue Garden", "artist": "Jane Artist", "seller_name": "ArtMatch",
+            "direct_checkout_approved": True,
+        }
+    })
+
+    async def fake_create(artwork_id, return_url, cancel_url, source_url=None):
+        assert return_url == "https://vincent-test.vercel.app/checkout/paypal/return"
+        assert cancel_url == "https://vincent-test.vercel.app/checkout/paypal/cancel"
+        return {
+            "id": "SANDBOX-DEMO-ORDER-1",
+            "approval_url": "https://www.sandbox.paypal.com/checkoutnow?token=SANDBOX-DEMO-ORDER-1",
+        }
+
+    async def fake_capture(order_id):
+        assert order_id == "SANDBOX-DEMO-ORDER-1"
+        return {
+            "id": order_id,
+            "status": "COMPLETED",
+            "purchase_units": [{
+                "amount": {"currency_code": "CAD", "value": "500.00"},
+                "payments": {"captures": [{
+                    "status": "COMPLETED",
+                    "amount": {"currency_code": "CAD", "value": "500.00"},
+                }]},
+            }],
+        }
+
+    monkeypatch.setattr(main, "create_paypal_order", fake_create)
+    monkeypatch.setattr(main, "capture_paypal_order", fake_capture)
+    client = TestClient(main.app, base_url="https://vincent-test.vercel.app")
+    login = client.post("/api/auth/login", json={
+        "email": config.VINCENT_DEMO_EMAIL, "password": config.VINCENT_DEMO_PASSWORD,
+    })
+    assert login.status_code == 200
+    assert login.json()["demo_mode"] is True
+
+    create = client.post("/api/paypal/orders", headers={
+        "x-forwarded-host": "vincent-test.vercel.app", "x-forwarded-proto": "https",
+    }, json={
+        "artwork_id": "artmatch:blue-garden", "source_url": source_url,
+        "title": "Blue Garden", "artist": "Jane Artist", "seller_name": "ArtMatch",
+    })
+    assert create.status_code == 200, create.text
+    assert create.json()["checkout_url"].startswith("https://www.sandbox.paypal.com/")
+    assert any(name.startswith("vincent_demo_pp_SANDBOX-DEMO-ORDER-1") for name in client.cookies.keys())
+
+    capture = client.post("/api/paypal/orders/SANDBOX-DEMO-ORDER-1/capture")
+    assert capture.status_code == 200, capture.text
+    assert capture.json()["payment_status"] == "paid"
+    assert capture.json()["title"] == "Blue Garden"
+
+    state = client.get("/api/account/state")
+    assert state.status_code == 200
+    purchases = state.json()["purchases"]
+    assert len(purchases) == 1
+    assert purchases[0]["sessionId"] == "SANDBOX-DEMO-ORDER-1"
+    assert purchases[0]["paymentStatus"] == "paid"
+    assert purchases[0]["currency"] == "CAD"
+    client.close()
+
+
+def test_paypal_diagnostics_report_safe_sandbox_settings(monkeypatch):
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_ID", "safe-to-report-as-configured")
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_SECRET", "never-return-this-secret")
+    monkeypatch.setattr(config, "PAYPAL_MODE", "sandbox")
+    monkeypatch.setattr(config, "PAYPAL_REGION", "CA")
+    monkeypatch.setattr(config, "PAYPAL_LOCALE", "en-CA")
+    monkeypatch.setattr(config, "PAYPAL_CATALOG", {
+        "approved": {"source_url": "https://artmatch.ca/canadian-art-for-sale/blue-garden", "amount": "500.00", "currency": "CAD", "direct_checkout_approved": True}
+    })
+    response = TestClient(main.app).get("/api/diagnostics")
+    assert response.status_code == 200
+    body = response.json()["payments"]
+    assert body["paypal_configured"] is True
+    assert body["paypal_mode"] == "sandbox"
+    assert body["paypal_region"] == "CA"
+    assert body["paypal_locale"] == "en-CA"
+    assert body["paypal_approved_catalog_items"] == 1
+    assert "never-return-this-secret" not in response.text

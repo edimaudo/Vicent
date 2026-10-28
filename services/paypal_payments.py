@@ -60,7 +60,7 @@ async def _access_token(client: httpx.AsyncClient) -> str:
         f"{config.PAYPAL_API_BASE}/v1/oauth2/token",
         data={"grant_type": "client_credentials"},
         auth=(config.PAYPAL_CLIENT_ID, config.PAYPAL_CLIENT_SECRET),
-        headers={"Accept": "application/json", "Accept-Language": "en_US"},
+        headers={"Accept": "application/json", "Accept-Language": str(config.PAYPAL_LOCALE or "en-CA").replace("-", "_")},
     )
     if response.status_code >= 400:
         raise PayPalUnavailable("PayPal authentication failed. Verify the server credentials and mode.")
@@ -98,12 +98,20 @@ async def create_order(artwork_id: str, return_url: str, cancel_url: str, source
                 "breakdown": {"item_total": {"currency_code": currency, "value": amount}},
             },
         }],
-        "application_context": {
-            "brand_name": "Vincent",
-            "user_action": "PAY_NOW",
-            "shipping_preference": "GET_FROM_FILE",
-            "return_url": return_url,
-            "cancel_url": cancel_url,
+        # Current Orders v2 integrations set the approval experience on the
+        # PayPal payment source rather than the deprecated application_context.
+        "payment_source": {
+            "paypal": {
+                "experience_context": {
+                    "brand_name": "Vincent",
+                    "locale": config.PAYPAL_LOCALE,
+                    "landing_page": "LOGIN",
+                    "user_action": "PAY_NOW",
+                    "shipping_preference": "GET_FROM_FILE",
+                    "return_url": return_url,
+                    "cancel_url": cancel_url,
+                }
+            }
         },
     }
     async with httpx.AsyncClient(timeout=config.REQUEST_TIMEOUT) as client:

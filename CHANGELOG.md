@@ -1,3 +1,12 @@
+## 2026-10-28 — PayPal Sandbox configuration and demo checkout
+
+- Standardized Canadian sandbox configuration with `PAYPAL_MODE=sandbox`, `PAYPAL_REGION=CA`, and `PAYPAL_LOCALE=en-CA`; REST requests use the official sandbox API host and order approval uses PayPal's hosted sandbox page.
+- Updated PayPal Orders v2 to use the current `payment_source.paypal.experience_context` shape, including the Canadian locale and return/cancel URLs.
+- PayPal checkout buttons are now offered only when server-side credentials are configured and a result matches a valid, explicitly seller-approved fixed-price catalog row.
+- Enabled demo-account PayPal order creation/capture without a database using short-lived signed HttpOnly cookies. Registered-account orders remain database-backed; client-side purchase history is updated after server-verified capture.
+- Added PayPal mode/region/locale/catalog readiness to safe diagnostics and documented the exact Vercel variables. Sandbox buyer login credentials are intentionally not consumed or stored by Vincent; buyers sign in on PayPal's hosted sandbox page.
+- Added regression tests for Canadian sandbox order payloads, demo checkout ownership, and purchase history without a database.
+
 ## 2026-10-28 — Concierge as the post-login destination and named demo profile
 
 - Changed the sign-in default destination to `/concierge`, including sign-in links from the landing page. Explicit protected-page return destinations are still preserved.
