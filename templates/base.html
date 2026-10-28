@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=20261027-auth-layout-controls">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261028-concierge-login-james">
 </head>
 <body>
 <div class="app-root">
@@ -36,7 +36,7 @@
     {% endif %}
     <div class="topbar-actions">
       {% if page != 'auth' %}
-      <a class="account-link" id="authLink" href="{% if current_user %}/dashboard{% else %}/login?next=%2Fdashboard{% endif %}" title="{% if current_user %}{{ current_user.email }}{% else %}Sign in to Vincent{% endif %}">{% if current_user %}Welcome, {{ current_user.name or current_user.email.split('@')[0]|replace('.', ' ')|replace('_', ' ')|title }}{% else %}Sign in{% endif %}</a>
+      <a class="account-link" id="authLink" href="{% if current_user %}/dashboard{% else %}/login?next=%2Fconcierge{% endif %}" title="{% if current_user %}{{ current_user.email }}{% else %}Sign in to Vincent{% endif %}">{% if current_user %}Welcome, {{ current_user.name or current_user.email.split('@')[0]|replace('.', ' ')|replace('_', ' ')|title }}{% else %}Sign in{% endif %}</a>
       <a class="account-logout-link" id="logoutButton" href="/logout" {% if not current_user %}hidden{% endif %}>Sign out</a>
       {% endif %}
       <button class="icon-button" id="themeToggle" type="button" aria-label="Switch to dark mode">◐</button>
@@ -58,9 +58,9 @@
 <script>
   window.ART_CONCIERGE_PAGE = "{{ page }}";
   window.ART_AUTH_MODE = "{{ auth_mode|default('') }}";
-  window.ART_AUTH_NEXT = {{ next_url|default('/dashboard')|tojson }};
+  window.ART_AUTH_NEXT = {{ next_url|default('/concierge')|tojson }};
 </script>
-<script src="/static/js/app.js?v=20261027-auth-layout-controls"></script>
+<script src="/static/js/app.js?v=20261028-concierge-login-james"></script>
 {% block page_script %}{% endblock %}
 </body>
 </html>

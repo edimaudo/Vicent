@@ -1,3 +1,18 @@
+## 2026-10-28 — Concierge as the post-login destination and named demo profile
+
+- Changed the sign-in default destination to `/concierge`, including sign-in links from the landing page. Explicit protected-page return destinations are still preserved.
+- A landing-page return target (`/`) is normalized to `/concierge` so a successful sign-in does not send the user back to the landing page.
+- Changed the demo display name from the placeholder `Demo` to `James`, including fallback behavior when an old `VINCENT_DEMO_NAME=Demo` setting remains configured.
+- Added regression coverage for the default destination, landing-page sign-in link, and demo display name.
+
+### Verification
+
+- `pytest -q` — 134 passed.
+- `node --check static/js/app.js` — passed.
+- `python -m compileall -q .` — passed.
+
+---
+
 ## 2026-10-27 — Require authentication for the workspace
 
 - Added server-side access guards for Dashboard, Concierge, Saved ArtWorks, results, and taste settings. Signed-out visitors are redirected to sign-in with their requested destination preserved, including Concierge mode and query parameters.

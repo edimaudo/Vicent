@@ -234,8 +234,11 @@ def _profile_dict(request: Request, user: dict[str, Any]) -> dict[str, Any]:
     return profile if isinstance(profile, dict) else {"loves": [], "avoids": [], "notes": "", "discoveryLevel": 50}
 
 
-def _safe_next(value: str | None, fallback: str = "/dashboard") -> str:
+def _safe_next(value: str | None, fallback: str = "/concierge") -> str:
     target = str(value or "").strip()
+    # Authentication should continue into the product, not send users back to the public landing page.
+    if target == "/":
+        return fallback
     if target.startswith("/") and not target.startswith("//") and "\\" not in target:
         return target
     return fallback
@@ -246,7 +249,7 @@ def _login_redirect(request: Request) -> RedirectResponse:
     target = request.url.path
     if request.url.query:
         target = f"{target}?{request.url.query}"
-    target = _safe_next(target, "/dashboard")
+    target = _safe_next(target, "/concierge")
     return RedirectResponse(url=f"/login?next={quote(target, safe='')}", status_code=303)
 
 

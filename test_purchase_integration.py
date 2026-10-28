@@ -416,6 +416,9 @@ def test_demo_signin_works_without_database_and_shows_authenticated_header(monke
     cta = landing_soup.select_one("#homeConciergeCta")
     assert cta is not None
     assert cta["href"] == "/login?next=%2Fconcierge"
+    auth_link = landing_soup.select_one("#authLink")
+    assert auth_link is not None
+    assert auth_link["href"] == "/login?next=%2Fconcierge"
     assert landing_soup.select_one('a[href="/concierge?intent=buy&new=1"]') is not None
     assert "buy art from connected galleries" in landing.text.lower()
 
@@ -434,6 +437,10 @@ def test_demo_signin_works_without_database_and_shows_authenticated_header(monke
     assert login_soup.select_one("nav.primary-nav") is None
     assert login_soup.select_one("#authEmail")["value"] == config.VINCENT_DEMO_EMAIL
     assert login_soup.select_one("#authPassword")["value"] == config.VINCENT_DEMO_PASSWORD
+    assert 'window.ART_AUTH_NEXT = "/concierge"' in login_page.text
+    root_target_login = client.get("/login?next=%2F")
+    assert 'window.ART_AUTH_NEXT = "/concierge"' in root_target_login.text
+    assert config.VINCENT_DEMO_NAME == "James"
 
     signin = client.post("/api/auth/login", json={
         "email": config.VINCENT_DEMO_EMAIL,
@@ -450,13 +457,16 @@ def test_demo_signin_works_without_database_and_shows_authenticated_header(monke
 
     home_signed_in = client.get("/")
     home_soup = BeautifulSoup(home_signed_in.text, "html.parser")
-    assert "Welcome, Demo" in home_signed_in.text
+    assert "Welcome, James" in home_signed_in.text
     assert home_soup.select_one("#logoutButton:not([hidden])") is not None
     assert home_soup.select_one("#homeConciergeCta")["href"] == "/concierge"
 
     redirected = client.get("/login?next=%2Fconcierge", follow_redirects=False)
     assert redirected.status_code == 303
     assert redirected.headers["location"] == "/concierge"
+    redirected_from_landing = client.get("/login?next=%2F", follow_redirects=False)
+    assert redirected_from_landing.status_code == 303
+    assert redirected_from_landing.headers["location"] == "/concierge"
 
     signed_out = client.get("/logout", follow_redirects=False)
     assert signed_out.status_code == 303

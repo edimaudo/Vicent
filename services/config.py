@@ -30,7 +30,9 @@ QLOO_ARTIST_TAKE = min(8, max(4, int(os.getenv("QLOO_ARTIST_TAKE", "8"))))
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 VINCENT_DEMO_EMAIL = os.getenv("VINCENT_DEMO_EMAIL", "demo@vincent.art").strip().casefold()
 VINCENT_DEMO_PASSWORD = os.getenv("VINCENT_DEMO_PASSWORD", "vincent-demo-2026")
-VINCENT_DEMO_NAME = os.getenv("VINCENT_DEMO_NAME", "Demo").strip() or "Demo"
+_VINCENT_DEMO_NAME = os.getenv("VINCENT_DEMO_NAME", "James").strip()
+# Treat the old placeholder label as unset so it never appears as the demo user display name.
+VINCENT_DEMO_NAME = "James" if not _VINCENT_DEMO_NAME or _VINCENT_DEMO_NAME.casefold() == "demo" else _VINCENT_DEMO_NAME
 VINCENT_DEMO_SESSION_SECRET = os.getenv("VINCENT_DEMO_SESSION_SECRET", "")
 PAYPAL_CLIENT_ID = os.getenv("PAYPAL_CLIENT_ID", "")
 PAYPAL_CLIENT_SECRET = os.getenv("PAYPAL_CLIENT_SECRET", "")

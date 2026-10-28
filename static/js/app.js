@@ -115,7 +115,7 @@
     const displayName = String(state.user?.name || fallbackName).trim().replace(/\b\w/g, (character) => character.toUpperCase()) || 'there';
     if (link) {
       link.textContent = state.user ? `Welcome, ${displayName}` : 'Sign in';
-      link.href = state.user ? '/dashboard' : `/login?next=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`;
+      link.href = state.user ? '/dashboard' : '/login?next=%2Fconcierge';
       link.title = state.user?.email || 'Sign in to Vincent';
     }
     if (logout) logout.hidden = !state.user;
@@ -189,8 +189,9 @@
       try {
         await accountFetch(`/api/auth/${mode}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
         const params = new URLSearchParams(window.location.search);
-        const next = params.get('next') || window.ART_AUTH_NEXT || '/dashboard';
-        window.location.assign(next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard');
+        let next = params.get('next') || window.ART_AUTH_NEXT || '/concierge';
+        if (next === '/') next = '/concierge';
+        window.location.assign(next.startsWith('/') && !next.startsWith('//') ? next : '/concierge');
       } catch (error) {
         if (message) message.textContent = error.message || 'Account request failed.';
       } finally {
