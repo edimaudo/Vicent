@@ -71,10 +71,7 @@ async def _access_token(client: httpx.AsyncClient) -> str:
     return str(token)
 
 
-async def create_order(artwork_id: str, return_url: str, cancel_url: str, source_url: str | None = None) -> dict[str, Any]:
-    entry = paypal_catalog_entry(artwork_id, source_url)
-    if not entry:
-        raise PayPalConfigurationError("This work is not configured for Vincent-managed PayPal checkout. Use the seller's checkout link instead.")
+async def _create_order_with_entry(artwork_id: str, entry: dict[str, Any], return_url: str, cancel_url: str) -> dict[str, Any]:
     amount = str(entry["amount"])
     currency = str(entry["currency"])
     title = str(entry.get("title") or artwork_id)[:127]
@@ -90,7 +87,7 @@ async def create_order(artwork_id: str, return_url: str, cancel_url: str, source
                 "description": description,
                 "quantity": "1",
                 "unit_amount": {"currency_code": currency, "value": amount},
-                "category": "PHYSICAL_GOODS",
+                "category": "DIGITAL_GOODS" if entry.get("sandbox_test") else "PHYSICAL_GOODS",
             }],
             "amount": {
                 "currency_code": currency,
@@ -107,7 +104,7 @@ async def create_order(artwork_id: str, return_url: str, cancel_url: str, source
                     "locale": config.PAYPAL_LOCALE,
                     "landing_page": "LOGIN",
                     "user_action": "PAY_NOW",
-                    "shipping_preference": "GET_FROM_FILE",
+                    "shipping_preference": "NO_SHIPPING" if entry.get("sandbox_test") else "GET_FROM_FILE",
                     "return_url": return_url,
                     "cancel_url": cancel_url,
                 }
@@ -122,12 +119,35 @@ async def create_order(artwork_id: str, return_url: str, cancel_url: str, source
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Prefer": "return=representation"},
         )
         if response.status_code >= 400:
-            raise PayPalUnavailable("PayPal could not create the order. Check the item catalog and PayPal account permissions.")
+            raise PayPalUnavailable("PayPal could not create the order. Verify the Sandbox credentials and account permissions.")
         payload = response.json()
     approval = next((link.get("href") for link in payload.get("links", []) if link.get("rel") in {"approve", "payer-action"}), None)
     if not approval:
         raise PayPalUnavailable("PayPal created an order but did not return an approval URL.")
     return {**payload, "approval_url": approval, "catalog_entry": entry}
+
+
+async def create_order(artwork_id: str, return_url: str, cancel_url: str, source_url: str | None = None) -> dict[str, Any]:
+    entry = paypal_catalog_entry(artwork_id, source_url)
+    if not entry:
+        raise PayPalConfigurationError("This work is not configured for Vincent-managed PayPal checkout. Use the seller's checkout link instead.")
+    return await _create_order_with_entry(artwork_id, entry, return_url, cancel_url)
+
+
+async def create_sandbox_test_order(return_url: str, cancel_url: str) -> dict[str, Any]:
+    """Create a fixed, one-dollar Sandbox-only test checkout; no catalog variable required."""
+    if str(config.PAYPAL_MODE).casefold() != "sandbox":
+        raise PayPalConfigurationError("The PayPal test checkout is only available in Sandbox mode.")
+    entry = {
+        "title": "Vincent PayPal Sandbox Test",
+        "description": "A fixed-price test transaction to verify Vincent's PayPal Sandbox connection.",
+        "amount": "1.00",
+        "currency": "CAD",
+        "seller_name": "Vincent Sandbox",
+        "direct_checkout_approved": True,
+        "sandbox_test": True,
+    }
+    return await _create_order_with_entry("vincent-paypal-sandbox-test", entry, return_url, cancel_url)
 
 
 async def capture_order(order_id: str) -> dict[str, Any]:

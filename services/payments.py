@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 from .config import (
-    ARTCO_BASE_URL,
+    VINCENT_BASE_URL,
     REQUEST_TIMEOUT,
     STRIPE_APPLICATION_FEE_BPS,
     STRIPE_CHECKOUT_CATALOG,
@@ -47,7 +47,7 @@ async def create_checkout_session(artwork_id: str, success_url: str | None = Non
     """Create a Stripe-hosted Checkout Session from server-side catalog data.
 
     The browser supplies only the artwork ID. Price IDs and seller account IDs
-    come from ARTCO_STRIPE_CHECKOUT_CATALOG, preventing client-side price tampering.
+    come from VINCENT_STRIPE_CHECKOUT_CATALOG, preventing client-side price tampering.
     """
     secret = _require_secret()
     catalog = checkout_catalog_entry(artwork_id)
@@ -57,8 +57,8 @@ async def create_checkout_session(artwork_id: str, success_url: str | None = Non
     if not price_id:
         raise PaymentConfigurationError("Checkout catalog entry is missing a Stripe Price ID.")
 
-    success = success_url or f"{ARTCO_BASE_URL.rstrip('/')}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel = cancel_url or f"{ARTCO_BASE_URL.rstrip('/')}/checkout/cancel"
+    success = success_url or f"{VINCENT_BASE_URL.rstrip('/')}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel = cancel_url or f"{VINCENT_BASE_URL.rstrip('/')}/checkout/cancel"
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
         price_resp = await client.get(

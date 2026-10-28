@@ -1476,6 +1476,24 @@
     }
   }
 
+  async function startPayPalSandboxTest(button) {
+    if (!(await requireSignInForPurchase())) return;
+    const message = $('#dashboardPurchasesMessage');
+    if (button) { button.disabled = true; button.textContent = 'Opening PayPal Sandbox…'; }
+    if (message) message.textContent = 'Creating a $1.00 CAD Sandbox test order…';
+    try {
+      const data = await accountFetch('/api/paypal/sandbox-test/orders', {
+        method: 'POST', headers: { Accept: 'application/json' },
+      });
+      await recordCheckoutStarted(data, { id: data.artwork_id, title: data.title, artist: data.artist });
+      if (message) message.textContent = 'Opening PayPal Sandbox. Sign in with your Sandbox buyer account to approve the test payment.';
+      window.location.assign(data.checkout_url);
+    } catch (error) {
+      if (message) message.textContent = error.message || 'The PayPal Sandbox test could not be started.';
+      if (button) { button.disabled = false; button.textContent = 'Test PayPal Sandbox · $1.00 CAD'; }
+    }
+  }
+
   async function requestPayPalInvoice(id, button) {
     const artwork = getArtworkById(String(id));
     if (!artwork) return;
@@ -1574,6 +1592,9 @@
     document.addEventListener('click', (event) => {
       const purchaseCheck = event.target.closest('[data-purchase-session]');
       if (purchaseCheck) { checkTrackedPurchase(purchaseCheck.dataset.purchaseSession, purchaseCheck, purchaseCheck.dataset.purchaseProvider || 'stripe'); return; }
+
+      const paypalSandboxTest = event.target.closest('#paypalSandboxTestButton');
+      if (paypalSandboxTest) { startPayPalSandboxTest(paypalSandboxTest); return; }
 
       const removeSelectedImage = event.target.closest('[data-remove-selected-image]');
       if (removeSelectedImage) {

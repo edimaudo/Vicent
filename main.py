@@ -37,7 +37,7 @@ from services.database import (
 )
 from services.paypal_payments import (
     PayPalConfigurationError, PayPalUnavailable, paypal_enabled, invoice_enabled,
-    paypal_catalog_entry, create_order as create_paypal_order, capture_order as capture_paypal_order,
+    paypal_catalog_entry, create_order as create_paypal_order, create_sandbox_test_order as create_paypal_sandbox_test_order, capture_order as capture_paypal_order,
     create_and_send_invoice, get_invoice_status,
 )
 from PIL import Image, UnidentifiedImageError
@@ -198,7 +198,7 @@ def _enrich_request_from_account(payload: ConciergeRequest, user: dict[str, Any]
 
 def _cookie_secure(request: Request) -> bool:
     forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().casefold()
-    return request.url.scheme == "https" or forwarded_proto == "https" or config.ARTCO_BASE_URL.startswith("https://")
+    return request.url.scheme == "https" or forwarded_proto == "https" or config.VINCENT_BASE_URL.startswith("https://")
 
 
 def _set_session_cookie(response: Response, request: Request, token: str) -> None:
@@ -305,7 +305,7 @@ def _set_demo_paypal_order_cookie(response: Response, request: Request, record: 
 
 
 def _checkout_base_url(request: Request) -> str:
-    configured = str(config.ARTCO_BASE_URL or "").strip().rstrip("/")
+    configured = str(config.VINCENT_BASE_URL or "").strip().rstrip("/")
     # Prefer an explicit public URL. If the default local-development URL is still
     # present on Vercel, construct the URL from the request forwarded by the host.
     if configured and not configured.startswith(("http://localhost", "http://127.0.0.1")):
@@ -551,7 +551,7 @@ async def account_orders(request: Request) -> JSONResponse:
 async def dashboard_page(request: Request) -> Response:
     if not _current_user(request):
         return _login_redirect(request)
-    return templates.TemplateResponse(request=request, name="dashboard.html", context={"page": "dashboard", "payment_mode": config.PAYPAL_MODE})
+    return templates.TemplateResponse(request=request, name="dashboard.html", context={"page": "dashboard", "payment_mode": config.PAYPAL_MODE, "paypal_configured": paypal_enabled()})
 
 
 @app.get("/concierge", response_class=HTMLResponse)
@@ -660,6 +660,61 @@ async def checkout_status(request: Request, session_id: str = "") -> JSONRespons
         logger.exception("Could not verify Stripe Checkout Session")
         return JSONResponse({"success": False, "detail": "Stripe could not verify this checkout right now. Try again shortly."}, status_code=502)
     return JSONResponse({"success": True, **session})
+
+
+@app.post("/api/paypal/sandbox-test/orders")
+async def paypal_sandbox_test_create(request: Request) -> JSONResponse:
+    """Start a fixed CAD $1.00 Sandbox transaction without an inventory catalogue."""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Sign in before testing PayPal checkout."}, status_code=401)
+    if str(config.PAYPAL_MODE).casefold() != "sandbox":
+        return JSONResponse({"success": False, "detail": "The PayPal test checkout is available only when PAYPAL_MODE=sandbox."}, status_code=409)
+    if not paypal_enabled():
+        return JSONResponse({"success": False, "detail": "Add your PayPal Sandbox Client ID and Secret in Vercel, then redeploy."}, status_code=409)
+    base_url = _checkout_base_url(request)
+    artwork_id = "vincent-paypal-sandbox-test"
+    title = "Vincent PayPal Sandbox Test"
+    artist = "Vincent"
+    seller_name = "Vincent Sandbox"
+    source_url = ""
+    try:
+        order = await create_paypal_sandbox_test_order(
+            f"{base_url}/checkout/paypal/return", f"{base_url}/checkout/paypal/cancel"
+        )
+        order_record = {
+            "user_id": user["id"], "provider": "paypal", "provider_order_id": str(order["id"]),
+            "artwork_id": artwork_id, "title": title, "artist": artist,
+            "seller_name": seller_name, "source_url": source_url,
+            "status": "CREATED", "payment_status": "APPROVAL_PENDING",
+            "amount": 1.0, "currency": "CAD", "metadata": {"sandbox_test": True},
+            "created_at": time.time(), "updated_at": time.time(),
+        }
+        if _is_demo_user(user):
+            response = JSONResponse({
+                "success": True, "provider": "paypal", "order_id": order["id"],
+                "session_id": order["id"], "checkout_url": order["approval_url"],
+                "artwork_id": artwork_id, "title": title, "artist": artist,
+                "seller_name": seller_name, "amount_total": 100, "currency": "cad",
+            })
+            _set_demo_paypal_order_cookie(response, request, order_record)
+            return response
+        save_order(user["id"], provider="paypal", provider_order_id=str(order["id"]),
+                   artwork_id=artwork_id, title=title, artist=artist, seller_name=seller_name,
+                   source_url=source_url, status="CREATED", payment_status="APPROVAL_PENDING",
+                   amount=1.0, currency="CAD", metadata={"sandbox_test": True})
+    except PayPalConfigurationError as exc:
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=409)
+    except PayPalUnavailable as exc:
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=502)
+    except DatabaseUnavailable as exc:
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=503)
+    return JSONResponse({
+        "success": True, "provider": "paypal", "order_id": order["id"],
+        "session_id": order["id"], "checkout_url": order["approval_url"],
+        "artwork_id": artwork_id, "title": title, "artist": artist,
+        "seller_name": seller_name, "amount_total": 100, "currency": "cad",
+    })
 
 
 @app.post("/api/paypal/orders")
@@ -1240,11 +1295,7 @@ async def diagnostics() -> dict[str, Any]:
             "paypal_mode": config.PAYPAL_MODE,
             "paypal_region": config.PAYPAL_REGION,
             "paypal_locale": config.PAYPAL_LOCALE,
-            "paypal_approved_catalog_items": sum(
-                1 for key, row in (config.PAYPAL_CATALOG.items() if isinstance(config.PAYPAL_CATALOG, dict) else [])
-                if isinstance(row, dict) and row.get("direct_checkout_approved") is True
-                and paypal_catalog_entry(str(key), str(row.get("source_url") or row.get("artwork_url") or ""))
-            ),
+            "paypal_sandbox_test_checkout_available": bool(paypal_enabled() and config.PAYPAL_MODE == "sandbox"),
         },
         "institutional_sources": {
             "art_institute_of_chicago": {"configured": True, "requires": []},

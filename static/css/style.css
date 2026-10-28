@@ -1774,3 +1774,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   .concierge-page .service-description,
   .concierge-page #personalizationControl { grid-column: 1; }
 }
+
+
+.dashboard-purchase-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.65rem; }
+@media (max-width: 640px) { .dashboard-purchase-actions { justify-content: flex-start; } }

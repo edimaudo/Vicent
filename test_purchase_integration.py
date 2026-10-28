@@ -147,6 +147,79 @@ def test_paypal_order_creates_account_owned_order_history(monkeypatch, tmp_path,
     assert purchase["currency"] == "CAD"
 
 
+
+def test_paypal_sandbox_test_flow_needs_no_catalog_variable(monkeypatch):
+    monkeypatch.setattr(config, "DATABASE_URL", "")
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_ID", "sandbox-client-id")
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_SECRET", "sandbox-client-secret")
+    monkeypatch.setattr(config, "PAYPAL_MODE", "sandbox")
+    monkeypatch.setattr(config, "PAYPAL_CATALOG", {})
+    monkeypatch.setattr(config, "VINCENT_DEMO_SESSION_SECRET", "test-demo-secret-for-paypal")
+
+    async def fake_create(return_url, cancel_url):
+        assert return_url.endswith("/checkout/paypal/return")
+        assert cancel_url.endswith("/checkout/paypal/cancel")
+        return {"id": "SANDBOX-TEST-ORDER-1", "approval_url": "https://www.sandbox.paypal.com/checkoutnow?token=SANDBOX-TEST-ORDER-1"}
+
+    async def fake_capture(order_id):
+        assert order_id == "SANDBOX-TEST-ORDER-1"
+        return {"id": order_id, "status": "COMPLETED", "purchase_units": [{
+            "amount": {"currency_code": "CAD", "value": "1.00"},
+            "payments": {"captures": [{"status": "COMPLETED", "amount": {"currency_code": "CAD", "value": "1.00"}}]},
+        }]}
+
+    monkeypatch.setattr(main, "create_paypal_sandbox_test_order", fake_create)
+    monkeypatch.setattr(main, "capture_paypal_order", fake_capture)
+    client = TestClient(main.app)
+    signin = client.post("/api/auth/login", json={
+        "email": config.VINCENT_DEMO_EMAIL, "password": config.VINCENT_DEMO_PASSWORD,
+    })
+    assert signin.status_code == 200, signin.text
+
+    dashboard = client.get("/dashboard")
+    assert dashboard.status_code == 200
+    assert 'id="paypalSandboxTestButton"' in dashboard.text
+
+    started = client.post("/api/paypal/sandbox-test/orders")
+    assert started.status_code == 200, started.text
+    assert started.json()["title"] == "Vincent PayPal Sandbox Test"
+    assert started.json()["currency"] == "cad"
+    assert started.json()["amount_total"] == 100
+    assert "SANDBOX-TEST-ORDER-1" in started.json()["checkout_url"]
+
+    captured = client.post("/api/paypal/orders/SANDBOX-TEST-ORDER-1/capture")
+    assert captured.status_code == 200, captured.text
+    assert captured.json()["payment_status"] == "paid"
+    assert captured.json()["currency"] == "cad"
+
+
+def test_dashboard_hides_paypal_sandbox_test_button_without_credentials(monkeypatch):
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_ID", "")
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_SECRET", "")
+    monkeypatch.setattr(config, "PAYPAL_MODE", "sandbox")
+    client = TestClient(main.app)
+    signin = client.post("/api/auth/login", json={
+        "email": config.VINCENT_DEMO_EMAIL, "password": config.VINCENT_DEMO_PASSWORD,
+    })
+    assert signin.status_code == 200, signin.text
+    response = client.get("/dashboard")
+    assert response.status_code == 200
+    assert 'id="paypalSandboxTestButton"' not in response.text
+
+
+def test_paypal_sandbox_test_route_rejects_live_mode(monkeypatch):
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_ID", "sandbox-client-id")
+    monkeypatch.setattr(config, "PAYPAL_CLIENT_SECRET", "sandbox-client-secret")
+    monkeypatch.setattr(config, "PAYPAL_MODE", "live")
+    client = TestClient(main.app)
+    signin = client.post("/api/auth/login", json={
+        "email": config.VINCENT_DEMO_EMAIL, "password": config.VINCENT_DEMO_PASSWORD,
+    })
+    assert signin.status_code == 200, signin.text
+    response = client.post("/api/paypal/sandbox-test/orders")
+    assert response.status_code == 409
+    assert "only when PAYPAL_MODE=sandbox" in response.json()["detail"]
+
 def test_paypal_invoice_requires_authorized_listing_and_records_invoice(monkeypatch, tmp_path, request):
     client, user = _account_client(monkeypatch, tmp_path, request, email="invoice-buyer@example.com")
     source_url = "https://artmatch.ca/canadian-art-for-sale/blue-garden"
@@ -559,6 +632,19 @@ def test_paypal_orders_use_canadian_sandbox_payment_source_context(monkeypatch):
     assert context["cancel_url"] == "https://vincent.example/checkout/paypal/cancel"
     assert "application_context" not in body
 
+    monkeypatch.setattr(config, "PAYPAL_CATALOG", {})
+    test_order = asyncio.run(paypal.create_sandbox_test_order(
+        "https://vincent.example/checkout/paypal/return", "https://vincent.example/checkout/paypal/cancel",
+    ))
+    assert test_order["id"] == "SANDBOX-ORDER-CA-1"
+    test_body = calls[-1][1]["json"]
+    test_unit = test_body["purchase_units"][0]
+    assert test_unit["amount"] == {"currency_code": "CAD", "value": "1.00", "breakdown": {"item_total": {"currency_code": "CAD", "value": "1.00"}}}
+    assert test_unit["items"][0]["name"] == "Vincent PayPal Sandbox Test"
+    test_context = test_body["payment_source"]["paypal"]["experience_context"]
+    assert test_context["shipping_preference"] == "NO_SHIPPING"
+    assert test_unit["items"][0]["category"] == "DIGITAL_GOODS"
+
 
 def test_demo_paypal_checkout_and_capture_work_without_database(monkeypatch):
     monkeypatch.setattr(config, "DATABASE_URL", "")
@@ -635,9 +721,7 @@ def test_paypal_diagnostics_report_safe_sandbox_settings(monkeypatch):
     monkeypatch.setattr(config, "PAYPAL_MODE", "sandbox")
     monkeypatch.setattr(config, "PAYPAL_REGION", "CA")
     monkeypatch.setattr(config, "PAYPAL_LOCALE", "en-CA")
-    monkeypatch.setattr(config, "PAYPAL_CATALOG", {
-        "approved": {"source_url": "https://artmatch.ca/canadian-art-for-sale/blue-garden", "amount": "500.00", "currency": "CAD", "direct_checkout_approved": True}
-    })
+    monkeypatch.setattr(config, "PAYPAL_CATALOG", {})
     response = TestClient(main.app).get("/api/diagnostics")
     assert response.status_code == 200
     body = response.json()["payments"]
@@ -645,5 +729,5 @@ def test_paypal_diagnostics_report_safe_sandbox_settings(monkeypatch):
     assert body["paypal_mode"] == "sandbox"
     assert body["paypal_region"] == "CA"
     assert body["paypal_locale"] == "en-CA"
-    assert body["paypal_approved_catalog_items"] == 1
+    assert body["paypal_sandbox_test_checkout_available"] is True
     assert "never-return-this-secret" not in response.text

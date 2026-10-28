@@ -101,8 +101,14 @@
         <p>Payments, invoices, and seller checkout hand-offs linked to your account.</p>
         {% if payment_mode == 'sandbox' %}<p class="payment-mode-note" role="note">Sandbox mode is selected; transactions are test-only.</p>{% elif payment_mode == 'live' %}<p class="payment-mode-note" role="note">Live payment processing is enabled.</p>{% endif %}
       </div>
-      <a class="secondary-button" href="/concierge?intent=buy">Find art to buy <span aria-hidden="true">→</span></a>
+      <div class="dashboard-purchase-actions">
+        <a class="secondary-button" href="/concierge?intent=buy">Find art to buy <span aria-hidden="true">→</span></a>
+        {% if payment_mode == 'sandbox' and paypal_configured %}
+        <button class="secondary-button" id="paypalSandboxTestButton" type="button">Test PayPal Sandbox · $1.00 CAD</button>
+        {% endif %}
+      </div>
     </header>
+    {% if payment_mode == 'sandbox' and paypal_configured %}<p class="field-note">Use this one-dollar test transaction to verify PayPal checkout. It does not purchase an artwork and is only available in Sandbox mode.</p>{% endif %}
     <p id="dashboardPurchasesMessage" class="action-message" aria-live="polite"></p>
     <div id="dashboardPurchases" class="purchase-history-list"></div>
     <p id="dashboardPurchasesEmpty" class="empty-state" hidden>No purchases or seller checkouts have been recorded for this account yet.</p>

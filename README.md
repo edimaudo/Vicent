@@ -1,7 +1,7 @@
 # Vincent | Art Concierge
 
-> **Build update — 27 October 2026**
-> Signed-out visitors are redirected to sign-in before accessing Dashboard, Concierge, Saved ArtWorks, results, or taste settings. The Concierge API also requires authentication, and login returns users to the page they originally requested. See `CHANGELOG.md` for changes and verification.
+> **Build update — 28 October 2026**
+> Signed-out visitors are redirected to sign-in before accessing Dashboard, Concierge, Saved ArtWorks, results, or taste settings. Signing in from the landing page opens Concierge, and the demo profile is named James. PayPal Sandbox uses Vercel credentials plus a built-in CAD $1.00 test checkout; no PayPal catalog variable is required. See `CHANGELOG.md` for details.
 
 A user-centric art concierge that combines broader cultural taste signals from Qloo with artwork research across commercial and institutional sources.
 
@@ -57,14 +57,16 @@ The Qloo implementation does not use the unsupported `/recommendations` or `/rec
 
 Email/password accounts use server-side sessions with an HttpOnly cookie. For an MVP walkthrough, the sign-in page pre-fills a demo account (`demo@vincent.art` / `vincent-demo-2026` by default, with the display name James), which works without a database. Demo profile edits and saved artwork remain in the current browser; they are not private or shared across devices. Configure `DATABASE_URL` for persistent registered accounts, profiles, saved artworks, recent requests, and order history. For production use, configure managed PostgreSQL through `DATABASE_URL`; local SQLite is supported for tests only. Passwords for registered accounts are stored as scrypt hashes. Configure `VINCENT_DEMO_EMAIL`, `VINCENT_DEMO_PASSWORD`, and a strong `VINCENT_DEMO_SESSION_SECRET` before deploying a demo-enabled instance; the signing key is generated per process when the secret is omitted.
 
-Purchasing supports seller redirection, Stripe Checkout catalog entries, and PayPal Orders v2 plus PayPal invoicing. PayPal's REST calls run server-side: the default mode is `sandbox`, with API base `https://api-m.sandbox.paypal.com`; the hosted buyer approval page is on `sandbox.paypal.com`. Configure `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE=sandbox`, `PAYPAL_REGION=CA`, and `PAYPAL_LOCALE=en-CA` in Vercel. Never put the client secret in browser code. The sandbox buyer email/password are used manually on PayPal's hosted approval page and must not be stored in Vercel or sent to Vincent. Set `ARTCO_BASE_URL` to the public HTTPS Vercel deployment URL so PayPal returns to the correct app.
+Purchasing supports seller redirection, Stripe Checkout catalog entries, and PayPal Orders v2 plus PayPal invoicing. PayPal's REST calls run server-side: the default mode is `sandbox`, with API base `https://api-m.sandbox.paypal.com`; the hosted buyer approval page is on `sandbox.paypal.com`. Configure `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE=sandbox`, `PAYPAL_REGION=CA`, and `PAYPAL_LOCALE=en-CA` in Vercel. Never put the client secret in browser code. The sandbox buyer email/password are used manually on PayPal's hosted approval page and must not be stored in Vercel or sent to Vincent. Set `VINCENT_BASE_URL` to the public HTTPS Vercel deployment URL so PayPal returns to the correct app.
 
-Seller listings use their own checkout by default. Vincent-managed PayPal checkout/invoices are only enabled for server catalog rows that explicitly set `direct_checkout_approved: true`, define a fixed amount/currency, and are approved for Vincent merchant processing. This prevents Vincent from collecting payment for a third-party gallery without explicit authorization/onboarding. Use `ARTCO_PAYPAL_CATALOG` to define approved rows, keyed by the artwork ID or matched by exact `source_url`. Each approved row must include a fixed `amount`, `currency`, seller/title metadata, and `direct_checkout_approved: true`; do not set this flag unless the seller is formally authorized and inventory/fulfilment responsibilities are agreed. Canada sandbox entries should normally use `CAD`. Example: `{"artmatch:approved-work":{"source_url":"https://artmatch.ca/canadian-art-for-sale/blue-garden","amount":"1200.00","currency":"CAD","title":"Blue Garden","artist":"Artist Name","seller_name":"Approved Gallery","direct_checkout_approved":true}}`. PayPal buttons are shown only when credentials are configured and the result matches a valid approved catalog row. PayPal Orders use the current payment-source experience context with the `en-CA` locale. The demo account can complete a sandbox order without a database; short-lived signed HttpOnly cookies bind demo orders to the signed-in session, while registered-user order history still requires `DATABASE_URL`. PayPal invoice buttons remain disabled until persistent order storage is configured. PayPal invoices also require `PAYPAL_INVOICE_EMAIL`, which is the merchant/invoicer email, not the sandbox buyer login. Live transactions require explicit live credentials and seller agreements to be configured and tested.
+Seller listings use their own checkout by default. PayPal credentials alone enable the connection; no custom catalogue variable is required. When `PAYPAL_MODE=sandbox` and credentials are configured, the Dashboard → Purchases section exposes a fixed CAD $1.00 Sandbox test checkout. This lets you verify order creation, PayPal buyer approval, capture, and payment-status reporting without charging for a third-party artwork. Real artwork payments remain disabled unless seller authorization, approved fixed pricing, and fulfilment responsibilities are deliberately configured in server code. The demo account can complete a Sandbox test without a database; short-lived signed HttpOnly cookies bind demo orders to the signed-in session, while registered-user order history requires `DATABASE_URL`. PayPal invoice buttons remain disabled until persistent order storage is configured. Optional PayPal invoices also require `PAYPAL_INVOICE_EMAIL`, which is the merchant/invoicer email, not the Sandbox buyer login. Live transactions require deliberate production credentials and seller agreements.
 
 
 #### Vercel Sandbox checklist
 
 Add these under **Project → Settings → Environment Variables**, then redeploy:
+For new Vincent deployments, use the `VINCENT_*` names below. Previously configured variable aliases are still accepted as a fallback, so existing deployments do not break.
+
 
 | Variable | Value |
 | --- | --- |
@@ -73,11 +75,10 @@ Add these under **Project → Settings → Environment Variables**, then redeplo
 | `PAYPAL_MODE` | `sandbox` |
 | `PAYPAL_REGION` | `CA` |
 | `PAYPAL_LOCALE` | `en-CA` |
-| `ARTCO_BASE_URL` | Public HTTPS URL of this Vincent deployment, without a trailing slash |
+| `VINCENT_BASE_URL` | Public HTTPS URL of this Vincent deployment, without a trailing slash |
 | `VINCENT_DEMO_SESSION_SECRET` | Stable, randomly generated secret (keep the same value across serverless invocations) |
-| `ARTCO_PAYPAL_CATALOG` | JSON containing each explicitly authorized, fixed-price artwork entry Vincent may charge for |
 
-A source listing is not automatically converted into a Vincent PayPal product. To show **Buy securely**, a commercial work must match a valid entry in `ARTCO_PAYPAL_CATALOG`; the amount/currency come from that server-side entry, not the browser request. Use a genuine seller-approved listing for the catalog entry and set its currency to `CAD` for this Canadian Sandbox configuration. Leave the catalog empty until you have selected an approved test item; without an approved entry, Vincent continues to send the buyer to the seller's own checkout.
+No PayPal catalogue variable is required for the Sandbox integration. Use the built-in CAD $1.00 test checkout in Dashboard → Purchases to confirm PayPal is connected. Actual gallery artwork remains on the seller's own checkout unless Vincent is explicitly authorized to collect payment for that seller and the artwork has a server-approved fixed price.
 
 The Sandbox buyer account is different from the Sandbox app's API credentials. At checkout, PayPal opens its hosted Sandbox approval page and the tester signs in there with the test buyer account. Do **not** add the buyer's email/password to Vercel; Vincent does not need those credentials and must never automate a buyer login. The business/seller Sandbox account can be used separately to view the test transaction. `DATABASE_URL` is optional for a James/demo Sandbox checkout; registered-user order history is database-backed. Optional invoice support is separate and needs `PAYPAL_INVOICE_EMAIL` for the business invoicer.
 
@@ -136,7 +137,7 @@ The demo account lets reviewers explore account-aware navigation without configu
 
 ## Commercial acquisition and payments
 
-Vincent treats commercial availability and payment as separate concerns. Artwork sources can expose a purchase/enquiry URL, which Vincent opens directly for third-party inventory. Vincent Checkout is enabled only for server-configured artwork IDs in `ARTCO_STRIPE_CHECKOUT_CATALOG`.
+Vincent treats commercial availability and payment as separate concerns. Artwork sources can expose a purchase/enquiry URL, which Vincent opens directly for third-party inventory. Vincent Checkout is enabled only for server-configured artwork IDs in `VINCENT_STRIPE_CHECKOUT_CATALOG`.
 
 Stripe Checkout is used for one-time payments. For a third-party gallery or seller, configure a Stripe connected account and map the artwork ID to both a Stripe Price and the seller's connected account. Vincent then creates a destination charge so the customer pays Vincent and Stripe transfers the seller portion to the connected account. This configuration is appropriate only when Vincent is operating the marketplace/merchant flow and has the required seller onboarding and commercial agreements.
 
@@ -145,8 +146,8 @@ Required variables for hosted checkout:
 ```text
 STRIPE_SECRET_KEY=...
 STRIPE_WEBHOOK_SECRET=...
-ARTCO_BASE_URL=https://your-domain.example
-ARTCO_STRIPE_CHECKOUT_CATALOG={"artco-direct:123":{"price_id":"price_..."}}
+VINCENT_BASE_URL=https://your-domain.example
+VINCENT_STRIPE_CHECKOUT_CATALOG={"vincent-direct:123":{"price_id":"price_..."}}
 ```
 
 The `/api/stripe/webhook` endpoint verifies Stripe signatures and recognizes `checkout.session.completed`. Durable order/fulfillment storage should be added when the seller and fulfillment workflow are finalized.
@@ -219,7 +220,7 @@ Curate a collection, Explore art with **Use my saved taste** enabled, and Buy ar
 - Artsy requires partner-approved access and both `ARTSY_XAPP_TOKEN` and `ARTSY_PARTNER_ID`.
 - Artlogic requires an authorized gallery/account feed URL in `ARTLOGIC_FEED_URL`.
 - Collect24 requires a server-side `COLLECT24_API_KEY`.
-- Stripe checkout also requires a server-side secret and entries in `ARTCO_STRIPE_CHECKOUT_CATALOG` for artworks enabled for Vincent checkout. External “Buy / enquire” links can only be shown when a commercial source provides a seller page.
+- Stripe checkout also requires a server-side secret and entries in `VINCENT_STRIPE_CHECKOUT_CATALOG` for artworks enabled for Vincent checkout. External “Buy / enquire” links can only be shown when a commercial source provides a seller page.
 
 No commercial inventory provider can be treated as connected simply because museum image APIs are available. Keep provider failures in backend diagnostics/logs; do not expose upstream HTTP errors in the customer-facing Buy panel.
 

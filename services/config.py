@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -15,12 +16,12 @@ ARTSY_PARTNER_ID = os.getenv("ARTSY_PARTNER_ID", "")
 ARTLOGIC_FEED_URL = os.getenv("ARTLOGIC_FEED_URL", "")
 COLLECT24_API_KEY = os.getenv("COLLECT24_API_KEY", "")
 COLLECT24_BASE_URL = os.getenv("COLLECT24_BASE_URL", "https://collect24.art/api/v1")
-ARTCO_BASE_URL = os.getenv("ARTCO_BASE_URL", "http://localhost:8000")
+VINCENT_BASE_URL = os.getenv("VINCENT_BASE_URL", os.getenv("ARTCO_BASE_URL", "http://localhost:8000"))
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_APPLICATION_FEE_BPS = int(os.getenv("STRIPE_APPLICATION_FEE_BPS", "0"))
 try:
-    STRIPE_CHECKOUT_CATALOG = __import__("json").loads(os.getenv("ARTCO_STRIPE_CHECKOUT_CATALOG", "{}"))
+    STRIPE_CHECKOUT_CATALOG = __import__("json").loads(os.getenv("VINCENT_STRIPE_CHECKOUT_CATALOG", os.getenv("ARTCO_STRIPE_CHECKOUT_CATALOG", "{}")))
 except Exception:
     STRIPE_CHECKOUT_CATALOG = {}
 ARTWORK_RESULT_LIMIT = min(3, max(1, int(os.getenv("ARTWORK_RESULT_LIMIT", "3"))))
@@ -47,10 +48,8 @@ PAYPAL_INVOICE_BUSINESS_NAME = os.getenv("PAYPAL_INVOICE_BUSINESS_NAME", "Vincen
 PAYPAL_INVOICE_GIVEN_NAME = os.getenv("PAYPAL_INVOICE_GIVEN_NAME", "Vincent")
 PAYPAL_INVOICE_SURNAME = os.getenv("PAYPAL_INVOICE_SURNAME", "Vincent")
 PAYPAL_INVOICE_EMAIL = os.getenv("PAYPAL_INVOICE_EMAIL", "")
-try:
-    PAYPAL_CATALOG = __import__("json").loads(os.getenv("ARTCO_PAYPAL_CATALOG", "{}"))
-except Exception:
-    PAYPAL_CATALOG = {}
+# Real-art PayPal direct checkout is disabled by default. Seller-authorized entries must be added deliberately in server code.
+PAYPAL_CATALOG: dict[str, dict[str, Any]] = {}
 
 ARTMATCH_LISTING_URL = os.getenv("ARTMATCH_LISTING_URL", "https://artmatch.ca/canadian-art-for-sale/")
 ROOKLEYS_LISTING_URL = os.getenv("ROOKLEYS_LISTING_URL", "https://rookleys.com/artworks/")

@@ -2,10 +2,18 @@
 
 - Standardized Canadian sandbox configuration with `PAYPAL_MODE=sandbox`, `PAYPAL_REGION=CA`, and `PAYPAL_LOCALE=en-CA`; REST requests use the official sandbox API host and order approval uses PayPal's hosted sandbox page.
 - Updated PayPal Orders v2 to use the current `payment_source.paypal.experience_context` shape, including the Canadian locale and return/cancel URLs.
-- PayPal checkout buttons are now offered only when server-side credentials are configured and a result matches a valid, explicitly seller-approved fixed-price catalog row.
+- Added a fixed CAD $1.00 Sandbox test checkout on Dashboard → Purchases. It validates order creation, buyer approval, capture, and payment verification without requiring a catalogue environment variable.
+- Real third-party artwork still uses the seller's checkout by default; Vincent-managed art charges require explicit seller authorization and fixed pricing in server code.
 - Enabled demo-account PayPal order creation/capture without a database using short-lived signed HttpOnly cookies. Registered-account orders remain database-backed; client-side purchase history is updated after server-verified capture.
-- Added PayPal mode/region/locale/catalog readiness to safe diagnostics and documented the exact Vercel variables. Sandbox buyer login credentials are intentionally not consumed or stored by Vincent; buyers sign in on PayPal's hosted sandbox page.
-- Added regression tests for Canadian sandbox order payloads, demo checkout ownership, and purchase history without a database.
+- Added PayPal mode/region/locale and Sandbox test-checkout readiness to safe diagnostics and documented the Vercel variables. Sandbox buyer login credentials are intentionally not consumed or stored by Vincent; buyers sign in on PayPal's hosted Sandbox page.
+- Removed PayPal inventory catalog variables from standard deployment setup. Added regression tests for fixed test-item amount/currency, Sandbox-only enforcement, demo checkout ownership, and purchase verification without a database.
+
+### Verification
+
+- `pytest -q` — 143 passed.
+- `python -m compileall -q .` — passed.
+- `node --check static/js/app.js` — passed.
+- Real PayPal Sandbox transaction remains unverified until deployment credentials are configured in Vercel and a buyer approves the test payment.
 
 ## 2026-10-28 — Concierge as the post-login destination and named demo profile
 
@@ -75,7 +83,7 @@
 - Rebranded visible application copy, page titles, metadata, authentication, dashboard, search errors, image-processing messages, and payment branding from ArtCo to Vincent.
 - Updated PayPal order brand and default invoice business/person names to Vincent.
 - Changed the browser theme preference key to `vincentThemePreference` with a migration fallback from `artcoThemePreference`.
-- Kept `ARTCO_*` environment-variable names and existing `artco_*` database tables stable to preserve deployment configuration and existing database data.
+- Preserved existing deployment variable aliases and database table names for compatibility; the later Vincent-prefixed environment variables are now the documented names for new deployments.
 
 ---
 
@@ -361,3 +369,10 @@
 - Hid market selection for Learn because that service produces a text learning guide without artwork search.
 - Removed processor-specific wording from artwork cards and general checkout feedback. Provider names remain in the Purchases/payment section and checkout-status pages.
 - Surfaced sandbox-vs-live mode only within the Purchases/payment section; sandbox remains the default. Region choice is stored with browser preferences and is sent to the planner as well as the provider filter.
+
+
+## 2026-10-28 — Vincent environment variable names
+
+- Made `VINCENT_BASE_URL`, `VINCENT_PAYPAL_CATALOG`, and `VINCENT_STRIPE_CHECKOUT_CATALOG` the documented environment variable names for new deployments.
+- Kept previously used environment variable names as backend-only fallback aliases for deployment compatibility; no old-brand variables need to be configured for a new Vincent deployment.
+- Updated PayPal and Stripe setup documentation and the `.env.example` file to use Vincent names.
