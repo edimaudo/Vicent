@@ -97,7 +97,10 @@ def test_artwork_preview_route_reads_open_graph_image(monkeypatch):
 def test_concierge_markup_omits_redundant_image_storage_copy_and_limit():
     from fastapi.testclient import TestClient
     from main import app
-    response = TestClient(app).get("/concierge")
+    client = TestClient(app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.get("/concierge")
     assert response.status_code == 200
     assert "Images are stored in this browser" not in response.text
     assert "Optional · Up to 5 per request" not in response.text
@@ -214,6 +217,8 @@ def test_concierge_api_caps_all_visible_artwork_cards_to_three(monkeypatch):
 
     monkeypatch.setattr(app_main, "run", fake_run)
     client = TestClient(app_main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
     response = client.post("/api/concierge", json={"intent": "discover", "goal": "show me art"})
     assert response.status_code == 200
     data = response.json()
@@ -249,7 +254,10 @@ def test_concierge_route_enforces_a_hard_response_deadline(monkeypatch):
 
     monkeypatch.setattr(app_main, "run", slow_run)
     monkeypatch.setattr(app_main, "CONCIERGE_RESPONSE_TIMEOUT_SECONDS", 0.05)
-    response = TestClient(app_main.app).post(
+    client = TestClient(app_main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.post(
         "/api/concierge", json={"intent": "discover", "goal": "modern painting"}
     )
     assert response.status_code == 504
@@ -348,7 +356,10 @@ def test_image_attached_concierge_uses_the_longer_required_image_search_deadline
 
     monkeypatch.setattr(app_main, "run", slow_run)
     monkeypatch.setattr(app_main, "CONCIERGE_IMAGE_RESPONSE_TIMEOUT_SECONDS", 0.5)
-    response = TestClient(app_main.app).post(
+    client = TestClient(app_main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.post(
         "/api/concierge", json={
             "intent": "discover",
             "goal": "modern painting",
@@ -375,7 +386,10 @@ def test_required_image_search_failure_is_returned_as_service_error(monkeypatch)
         }
 
     monkeypatch.setattr(app_main, "run", failed_run)
-    response = TestClient(app_main.app).post(
+    client = TestClient(app_main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.post(
         "/api/concierge", json={
             "intent": "discover",
             "goal": "modern painting",

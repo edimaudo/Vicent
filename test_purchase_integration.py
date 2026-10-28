@@ -365,6 +365,8 @@ def test_concierge_region_selector_defaults_to_canada_and_hides_in_learn():
     from fastapi.testclient import TestClient
     import main
     client = TestClient(main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
     response = client.get("/concierge")
     assert response.status_code == 200
     assert '<option value="CA" selected>Canada</option>' in response.text
@@ -395,6 +397,8 @@ def test_payments_section_is_the_only_general_ui_section_that_announces_sandbox_
     from fastapi.testclient import TestClient
     import main
     client = TestClient(main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
     dashboard = client.get('/dashboard').text
     assert 'Sandbox mode is selected; transactions are test-only.' in dashboard
     assert 'PayPal and Stripe payments, invoices' not in dashboard

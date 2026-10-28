@@ -9,7 +9,10 @@ ROOT = Path(__file__).resolve().parent
 
 
 def test_results_page_has_required_root():
-    response = TestClient(app).get("/results?run=1")
+    client = TestClient(app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.get("/results?run=1")
     assert response.status_code == 200
     assert 'id="resultsPage"' in response.text
     assert 'id="artGrid"' in response.text
@@ -66,7 +69,10 @@ def test_concierge_api_returns_result_payload(monkeypatch):
         }
 
     monkeypatch.setattr(main, "run", fake_run)
-    response = TestClient(main.app).post(
+    client = TestClient(main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.post(
         "/api/concierge",
         json={"intent": "discover", "goal": "Find me contemporary photography", "loves": ["Radiohead"]},
     )

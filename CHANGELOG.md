@@ -1,3 +1,18 @@
+## 2026-10-27 — Require authentication for the workspace
+
+- Added server-side access guards for Dashboard, Concierge, Saved ArtWorks, results, and taste settings. Signed-out visitors are redirected to sign-in with their requested destination preserved, including Concierge mode and query parameters.
+- Hid primary workspace navigation when no user is signed in and made the Vincent brand link return signed-out users to the public landing page.
+- Protected the Concierge API as well as its page; signed-out API requests now receive `401 AuthenticationRequired` rather than being able to run art searches directly.
+- Added regression tests for direct-route access, return-path preservation, hidden guest navigation, and API authentication. Updated existing Concierge tests to sign in through the MVP demo account.
+
+### Verification
+
+- `pytest -q` — 134 passed.
+- `node --check static/js/app.js` — passed.
+- `python -m compileall -q .` — passed.
+
+---
+
 ## 2026-10-27 — Sign-in and Concierge layout refinements
 
 - Removed the extra explanatory sentence and demo-access paragraph from the sign-in form so the page shows only its title and sign-in controls.

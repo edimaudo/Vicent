@@ -71,7 +71,10 @@ def test_concierge_ui_has_image_upload_and_no_redundant_composer_labels():
     from fastapi.testclient import TestClient
     from main import app
 
-    response = TestClient(app).get("/concierge")
+    client = TestClient(app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.get("/concierge")
     assert response.status_code == 200
     assert 'id="inspirationFiles"' in response.text
     assert 'id="browseInspiration"' not in response.text
@@ -219,7 +222,10 @@ def test_api_accepts_image_payload_without_persisting_it_to_response(monkeypatch
         }
 
     monkeypatch.setattr(main, "run", fake_run)
-    response = TestClient(main.app).post("/api/concierge", json={
+    client = TestClient(main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.post("/api/concierge", json={
         "intent": "discover",
         "goal": "Find art with this palette.",
         "inspiration_image_ids": ["image-1"],
@@ -241,7 +247,10 @@ def test_learn_about_art_hides_image_uploader_and_exposes_written_topic_guidance
     from fastapi.testclient import TestClient
     from main import app
 
-    response = TestClient(app).get("/concierge?intent=learn")
+    client = TestClient(app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.get("/concierge?intent=learn")
     assert response.status_code == 200
     assert 'id="visualInspirationSection" class="visual-inspiration" aria-labelledby="inspirationHeading" hidden' in response.text
     js = (Path(__file__).resolve().parent / "static/js/app.js").read_text()

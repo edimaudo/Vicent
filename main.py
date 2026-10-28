@@ -241,6 +241,15 @@ def _safe_next(value: str | None, fallback: str = "/dashboard") -> str:
     return fallback
 
 
+def _login_redirect(request: Request) -> RedirectResponse:
+    """Redirect an unauthenticated visitor to sign-in, preserving the requested page."""
+    target = request.url.path
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    target = _safe_next(target, "/dashboard")
+    return RedirectResponse(url=f"/login?next={quote(target, safe='')}", status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
     user = _current_user(request)
@@ -424,12 +433,16 @@ async def account_orders(request: Request) -> JSONResponse:
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard_page(request: Request) -> HTMLResponse:
+async def dashboard_page(request: Request) -> Response:
+    if not _current_user(request):
+        return _login_redirect(request)
     return templates.TemplateResponse(request=request, name="dashboard.html", context={"page": "dashboard", "payment_mode": config.PAYPAL_MODE})
 
 
 @app.get("/concierge", response_class=HTMLResponse)
-async def concierge_page(request: Request) -> HTMLResponse:
+async def concierge_page(request: Request) -> Response:
+    if not _current_user(request):
+        return _login_redirect(request)
     return templates.TemplateResponse(
         request=request,
         name="concierge.html",
@@ -441,17 +454,23 @@ async def concierge_page(request: Request) -> HTMLResponse:
 
 
 @app.get("/results", response_class=HTMLResponse)
-async def results_page(request: Request) -> HTMLResponse:
+async def results_page(request: Request) -> Response:
+    if not _current_user(request):
+        return _login_redirect(request)
     return templates.TemplateResponse(request=request, name="results.html", context={"page": "results"})
 
 
 @app.get("/saved", response_class=HTMLResponse)
-async def saved_page(request: Request) -> HTMLResponse:
+async def saved_page(request: Request) -> Response:
+    if not _current_user(request):
+        return _login_redirect(request)
     return templates.TemplateResponse(request=request, name="saved.html", context={"page": "saved"})
 
 
 @app.get("/taste")
 async def taste_page(request: Request) -> RedirectResponse:
+    if not _current_user(request):
+        return _login_redirect(request)
     return RedirectResponse(url="/dashboard#taste", status_code=307)
 
 
@@ -1161,6 +1180,16 @@ async def diagnostics_live() -> dict[str, Any]:
 
 @app.post("/api/concierge")
 async def concierge(payload: ConciergeRequest, request: Request) -> JSONResponse:
+    user = _current_user(request)
+    if not user:
+        return JSONResponse(
+            {
+                "success": False,
+                "detail": "Sign in to use Vincent's art concierge.",
+                "error_type": "AuthenticationRequired",
+            },
+            status_code=401,
+        )
     # Enforce this at the API boundary as well as the browser UI. Images may
     # support a request, but every Concierge service must receive written input.
     if not (payload.goal or "").strip():
@@ -1176,7 +1205,6 @@ async def concierge(payload: ConciergeRequest, request: Request) -> JSONResponse
     # Image-attached Explore/Find/Curate requests require sequential work: complete
     # the written search, interpret the image, then run a separate visual search.
     # Learn is text-topic driven and does not process inspiration-image payloads.
-    user = _current_user(request)
     payload = _enrich_request_from_account(payload, user)
     timeout_seconds = (
         CONCIERGE_IMAGE_RESPONSE_TIMEOUT_SECONDS

@@ -1,7 +1,7 @@
 # Vincent | Art Concierge
 
-> **Build update — 26 October 2026**
-> This source package includes required sequential image search, request-only image handling, a three-card total, image-proxy recovery, and consistent internal-page spacing. See `CHANGELOG.md` for changes and verification.
+> **Build update — 27 October 2026**
+> Signed-out visitors are redirected to sign-in before accessing Dashboard, Concierge, Saved ArtWorks, results, or taste settings. The Concierge API also requires authentication, and login returns users to the page they originally requested. See `CHANGELOG.md` for changes and verification.
 
 A user-centric art concierge that combines broader cultural taste signals from Qloo with artwork research across commercial and institutional sources.
 

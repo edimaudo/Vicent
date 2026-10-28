@@ -12,7 +12,10 @@ def test_image_alone_cannot_submit_any_concierge_mode(intent, monkeypatch):
         raise AssertionError("Concierge execution must not start without written input")
 
     monkeypatch.setattr(main, "run", unexpected_run)
-    response = TestClient(main.app).post("/api/concierge", json={
+    client = TestClient(main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.post("/api/concierge", json={
         "intent": intent,
         "inspiration_image_ids": ["image-1"],
         "inspiration_images": [{
@@ -45,7 +48,10 @@ def test_blank_or_missing_written_prompt_is_rejected_even_with_image(goal, monke
             "data": "YXJ0" + "eA" * 20,
         }],
     }
-    response = TestClient(main.app).post("/api/concierge", json=payload)
+    client = TestClient(main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.post("/api/concierge", json=payload)
     assert response.status_code == 422
     assert response.json()["error_type"] == "WrittenPromptRequired"
 
@@ -61,7 +67,10 @@ def test_text_prompt_is_trimmed_and_can_be_combined_with_an_image(monkeypatch):
         return {"success": True, "intent": payload.intent.value, "results": [], "not_for_sale": []}
 
     monkeypatch.setattr(main, "run", fake_run)
-    response = TestClient(main.app).post("/api/concierge", json={
+    client = TestClient(main.app)
+    from test_helpers import sign_in_demo
+    sign_in_demo(client)
+    response = client.post("/api/concierge", json={
         "intent": "discover",
         "goal": "  Explore similar art works of Yayoi Kusama.  ",
         "inspiration_image_ids": ["image-1"],
