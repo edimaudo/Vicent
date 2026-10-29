@@ -1240,6 +1240,53 @@
     const notForSale = [];
     const visibleCount = results.length + notForSale.length;
     const visiblePurchasable = results.filter((work) => work.availability === 'available' && work.source_kind === 'commercial').length;
+    const buyShopsSection = $('#buyShopsSection');
+    const buyShopLinks = $('#buyShopLinks');
+    if (buyShopsSection && buyShopLinks) {
+      const showBuyShops = intent === 'buy';
+      buyShopsSection.hidden = !showBuyShops;
+      if (showBuyShops) {
+        const market = ['CA', 'US', 'BOTH'].includes(data.region_scope)
+          ? data.region_scope
+          : (['CA', 'US', 'BOTH'].includes(state.preferences.regionScope) ? state.preferences.regionScope : 'CA');
+        const canadianShops = [
+          { name: 'ArtMatch', description: 'Original art from Canadian artists', url: 'https://artmatch.ca/canadian-art-for-sale/' },
+          { name: 'Rookleys Canadian Art Gallery', description: 'Canadian artworks listed for sale', url: 'https://rookleys.com/artworks/' },
+        ];
+        const usShops = [
+          { name: 'UGallery', description: 'Original paintings and artworks from a U.S.-based online gallery', url: 'https://www.ugallery.com/collections/all-artworks' },
+          { name: 'Saatchi Art', description: 'Original art, paintings, photography, and sculpture', url: 'https://www.saatchiart.com/all' },
+        ];
+        const shops = market === 'CA' ? canadianShops : market === 'US' ? usShops : [...canadianShops, ...usShops];
+        const heading = $('#buyShopsHeading');
+        if (heading) heading.textContent = market === 'CA'
+          ? 'Browse Canadian art shops'
+          : market === 'US' ? 'Browse U.S. art shops' : 'Browse Canadian and U.S. art shops';
+        buyShopLinks.innerHTML = shops.map((shop) => `<a class="buy-shop-link" href="${escapeAttribute(shop.url)}" target="_blank" rel="noopener noreferrer"><strong>${escapeHtml(shop.name)}</strong><span>${escapeHtml(shop.description)}</span><span class="buy-shop-action">Browse shop ↗</span></a>`).join('');
+      } else {
+        buyShopLinks.innerHTML = '';
+      }
+    }
+    if (intent === 'buy') {
+      if (visiblePurchasable > 0) {
+        const shopNames = [...new Set(results.map((work) => work.source).filter(Boolean))];
+        $('#resultsSummary').textContent = `Found ${visiblePurchasable} listing${visiblePurchasable === 1 ? '' : 's'} marked available${shopNames.length ? ` from ${shopNames.join(', ')}` : ''}. Confirm final price and availability with the seller.`;
+      } else {
+        const diagnostics = data.diagnostics || {};
+        const region = ['CA', 'US', 'BOTH'].includes(data.region_scope)
+          ? data.region_scope
+          : (['CA', 'US', 'BOTH'].includes(state.preferences.regionScope) ? state.preferences.regionScope : 'CA');
+        const shopNames = region === 'CA' ? ['ArtMatch', 'Rookleys Canadian Art Gallery']
+          : region === 'US' ? ['UGallery', 'Saatchi Art']
+          : ['ArtMatch', 'Rookleys Canadian Art Gallery', 'UGallery', 'Saatchi Art'];
+        const stats = (diagnostics.source_diagnostics || []).filter((source) => shopNames.includes(source.provider));
+        const allFailed = stats.length > 0 && stats.every((source) => Array.isArray(source.errors) && source.errors.length > 0);
+        const marketLabel = region === 'CA' ? 'Canadian' : region === 'US' ? 'U.S.' : 'Canadian and U.S.';
+        $('#resultsSummary').textContent = allFailed
+          ? `I could not retrieve live listings from the ${marketLabel} shops just now. Browse the shops below or retry.`
+          : `No listings matched this search in the ${marketLabel} shops. Browse the shops below or broaden your search.`;
+      }
+    }
     $('#resultsMeta').textContent = purchaseOnlyIntent
       ? `${visibleCount} work${visibleCount === 1 ? '' : 's'} shown · all available to acquire`
       : `${visibleCount} recommendation${visibleCount === 1 ? '' : 's'} shown`;
@@ -1247,11 +1294,8 @@
       $('#artGrid').innerHTML = results.map(renderCard).join('');
       bindArtworkImageFallbacks($('#artGrid'));
     } else {
-      const configuredSellers = data.diagnostics?.commercial_sources_configured || [];
       const emptyMessage = purchaseOnlyIntent
-        ? (configuredSellers.length
-          ? 'No works explicitly listed as available to purchase matched this request. Try a different artist, style, medium, location, or budget.'
-          : 'No commercial seller inventory is connected right now. These recommendations only show works listed as available to purchase; museum collection records are not substituted.')
+        ? 'No matching artwork cards were returned. Use the shop links below to browse current inventory directly.'
         : 'The connected art collections did not return a match with a retrievable image. Try a broader art style, artist, subject, or medium.';
       // Provider configuration and HTTP failures stay in /api/diagnostics and
       // server logs. They are not user-facing copy and must never leak a museum

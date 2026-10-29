@@ -9,7 +9,7 @@ import main
 import services.agent as agent
 import services.payments as payments
 from models.schemas import ConciergeRequest
-from services.art_sources import Artwork, _map_artlogic, _map_artsy
+from services.art_sources import Artwork
 from services.payments import CheckoutSessionNotFound
 
 ROOT = Path(__file__).resolve().parent
@@ -156,7 +156,7 @@ def test_checkout_return_page_never_claims_payment_before_verification():
     assert 'data-checkout-status="verify"' in response.text
     assert "the Checkout Session with Stripe" in response.text
     assert "Your checkout is complete." not in response.text
-    assert "/static/js/app.js?v=20261028-paypal-sandbox-test-checkout" in response.text
+    assert "/static/js/app.js?v=20261029-us-buy-shops" in response.text
 
 
 def test_stripe_session_retrieval_uses_authenticated_stripe_api(monkeypatch):
@@ -317,6 +317,7 @@ def test_buy_research_uses_commercial_inventory_only(monkeypatch):
     calls = []
 
     class FakeProvider:
+        country_code = "CA"
         def __init__(self, name):
             self.name = name
 
@@ -324,7 +325,7 @@ def test_buy_research_uses_commercial_inventory_only(monkeypatch):
             calls.append(self.name)
             return []
 
-    commercial = [FakeProvider("Artsy"), FakeProvider("Collect24")]
+    commercial = [FakeProvider("ArtMatch"), FakeProvider("Rookleys Canadian Art Gallery")]
     institutional = [FakeProvider("The Metropolitan Museum of Art"), FakeProvider("Cleveland Museum of Art")]
     monkeypatch.setattr(agent, "commercial_providers", lambda: commercial)
     monkeypatch.setattr(agent, "institutional_providers", lambda: institutional)
@@ -335,7 +336,7 @@ def test_buy_research_uses_commercial_inventory_only(monkeypatch):
         request = ConciergeRequest(intent=intent, purchase_required=(intent == "buy"), goal=f"{intent} an abstract painting", number_of_works=3)
         works, diagnostics = asyncio.run(agent._research(["abstract painting for sale"], request, []))
         assert works == []
-        assert set(calls) == {"Artsy", "Collect24"}
+        assert set(calls) == {"ArtMatch", "Rookleys Canadian Art Gallery"}
         assert "The Metropolitan Museum of Art" not in calls
         assert all(item["provider"] not in {"The Metropolitan Museum of Art", "Cleveland Museum of Art"} for item in diagnostics)
 
@@ -344,8 +345,9 @@ def test_buy_empty_state_does_not_expose_backend_source_errors():
     js = (ROOT / "static/js/app.js").read_text()
     assert "No commercial art source is connected yet" not in js
     assert "Sources with connection issues:" not in js
-    assert "No works explicitly listed as available to purchase matched this request." in js
-    assert "No commercial seller inventory is connected right now." in js
+    assert "No matching artwork cards were returned. Use the shop links below to browse current inventory directly." in js
+    assert "Browse art shops" in (ROOT / "templates/results.html").read_text()
+    assert "No listings matched this search in the ${marketLabel} shops." in js
     assert "const purchaseOnlyIntent = ['buy', 'curate', 'taste'].includes(intent) || usesSavedTaste;" in js
 
 
@@ -362,46 +364,6 @@ def test_new_results_run_never_restores_cached_previous_search():
     assert "if (tasteSummary) tasteSummary.hidden = true" in run
     assert "if (visualSummary) { visualSummary.hidden = true; visualSummary.innerHTML = ''; }" in run
     assert "if (notForSaleGrid) notForSaleGrid.innerHTML = ''" in run
-
-
-def test_artsy_inquiry_only_items_are_not_purchase_inventory():
-    inquiry_only = _map_artsy({
-        "id": "inquiry-1", "title": "Inquiry only", "can_acquire": "false",
-        "can_inquire": True, "sold": False,
-        "_embedded": {"artists": [{"name": "Gallery Artist"}]},
-        "_links": {"thumbnail": {"href": "https://images.example.org/work.jpg"},
-                   "permalink": {"href": "https://www.artsy.net/artwork/inquiry-1"}},
-    })
-    buyable = _map_artsy({
-        "id": "buyable-1", "title": "Buyable", "can_acquire": True,
-        "can_inquire": False, "sold": False,
-        "_embedded": {"artists": [{"name": "Gallery Artist"}]},
-        "_links": {"thumbnail": {"href": "https://images.example.org/work.jpg"},
-                   "permalink": {"href": "https://www.artsy.net/artwork/buyable-1"}},
-    })
-    assert inquiry_only.availability == "not_for_sale"
-    assert agent._is_purchasable(inquiry_only) is False
-    assert buyable.availability == "available"
-    assert agent._is_purchasable(buyable) is True
-
-
-def test_artlogic_buy_availability_requires_explicit_for_sale_status():
-    from_for_sale = _map_artlogic({"rows": [
-        {"id": "for-sale", "title": "Available", "availability": "for_sale",
-         "image_url": "https://gallery.example.org/available.jpg", "url": "https://gallery.example.org/available"},
-        {"id": "published", "title": "Published but not marked for sale", "status": "published",
-         "image_url": "https://gallery.example.org/published.jpg", "url": "https://gallery.example.org/published"},
-        {"id": "reserved", "title": "Reserved", "availability": "available", "reserved": True,
-         "image_url": "https://gallery.example.org/reserved.jpg", "url": "https://gallery.example.org/reserved"},
-        {"id": "sold-conflict", "title": "Sold", "availability": "for_sale", "status": "sold",
-         "image_url": "https://gallery.example.org/sold.jpg", "url": "https://gallery.example.org/sold"},
-    ]})
-    assert {work.id: work.availability for work in from_for_sale} == {
-        "artlogic:for-sale": "available",
-        "artlogic:published": "not_for_sale",
-        "artlogic:reserved": "not_for_sale",
-        "artlogic:sold-conflict": "not_for_sale",
-    }
 
 
 def test_curate_taste_and_buy_selection_only_returns_explicitly_buyable_inventory():
@@ -454,7 +416,7 @@ def test_buy_api_and_ui_never_pad_with_non_purchasable_works():
     assert '"not_for_sale": [] if purchase_only_intent' in agent_source
     assert "work.source_kind === 'commercial' && work.availability === 'available'" in js
     assert "const notForSale = [];" in js
-    assert "museum collection records are not substituted" in js
+    assert "Use the shop links below" in js
 
 
 def test_fresh_search_invalidates_old_state_and_refreshes_bfcache_handoff():
@@ -708,3 +670,15 @@ def test_concierge_service_and_region_selectors_share_desktop_row():
     assert ".concierge-page .concierge-service-control" in css
     assert "display: grid;" in css and "grid-template-columns: repeat(2, minmax(0, 1fr));" in css
     assert ".concierge-page .service-description" in css and "grid-column: 1 / -1;" in css
+
+
+def test_buy_shop_links_cover_canada_us_and_both_markets():
+    html = (ROOT / "templates/results.html").read_text()
+    js = (ROOT / "static/js/app.js").read_text()
+    assert 'id="buyShopsSection"' in html
+    assert "Browse Canadian art shops" in js
+    assert "Browse U.S. art shops" in js
+    assert "Browse Canadian and U.S. art shops" in js
+    assert "https://www.ugallery.com/collections/all-artworks" in js
+    assert "https://www.saatchiart.com/all" in js
+    assert "data.region_scope" in js

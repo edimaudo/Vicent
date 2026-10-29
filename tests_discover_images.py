@@ -1,4 +1,4 @@
-from services.art_sources import ArtInstituteProvider, ArtlogicProvider, ClevelandProvider, MetProvider, _map_artlogic, _normalise_image_url, _usable_image_url
+from services.art_sources import ArtInstituteProvider, ClevelandProvider, MetProvider, _normalise_image_url, _usable_image_url
 
 
 def test_image_url_normalization():
@@ -100,19 +100,6 @@ def test_artwork_with_approved_source_page_can_be_previewed_without_api_thumbnai
     assert work.image_url is None
     assert work.detail_url == "https://www.artic.edu/artworks/4321"
     assert _has_image_candidate(work)
-
-
-def test_artlogic_feed_maps_available_image_urls_from_common_fields():
-    works = _map_artlogic({"rows": [
-        {"id": 1, "title": "Direct thumb", "thumbnail_url": "https://cdn.gallery.example/work-1.jpg", "url": "https://gallery.example/work-1"},
-        {"id": 2, "title": "Nested image", "images": {"web": {"url": "https://cdn.gallery.example/work-2.jpg"}}, "url": "https://gallery.example/work-2"},
-        {"id": 3, "title": "Image list", "images": [{"src": "https://cdn.gallery.example/work-3.webp"}], "url": "https://gallery.example/work-3"},
-    ]})
-    assert [work.image_url for work in works] == [
-        "https://cdn.gallery.example/work-1.jpg",
-        "https://cdn.gallery.example/work-2.jpg",
-        "https://cdn.gallery.example/work-3.webp",
-    ]
 
 
 def test_concierge_does_not_wait_for_slow_optional_enrichment(monkeypatch):

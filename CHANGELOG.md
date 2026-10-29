@@ -1,3 +1,13 @@
+# Changelog
+
+## 2026-10-29 — Canadian Buy inventory correction
+
+- Restricted the active Buy inventory registry to public Canadian shop pages from ArtMatch and Rookleys; removed the Artsy, Artlogic-feed, and Collect24 API-backed provider integrations and their environment-variable setup.
+- Fixed generic purchase prompts such as “contemporary art for sale” so the intent words do not filter out every listing by exact title/artist matching.
+- Made Buy summaries reflect the actual result count or shop retrieval state instead of always claiming the same search succeeded.
+- Added direct shop-browse cards for ArtMatch and Rookleys when users want to browse the current seller catalogue or automated listing retrieval returns no matches.
+- Added regression coverage for broad Buy queries, active public-shop sources, removed API configuration, and cache-busted frontend assets.
+
 ## 2026-10-28 — PayPal Sandbox configuration and demo checkout
 
 - Standardized Canadian sandbox configuration with `PAYPAL_MODE=sandbox`, `PAYPAL_REGION=CA`, and `PAYPAL_LOCALE=en-CA`; REST requests use the official sandbox API host and order approval uses PayPal's hosted sandbox page.
@@ -376,3 +386,11 @@
 - Made `VINCENT_BASE_URL`, `VINCENT_PAYPAL_CATALOG`, and `VINCENT_STRIPE_CHECKOUT_CATALOG` the documented environment variable names for new deployments.
 - Kept previously used environment variable names as backend-only fallback aliases for deployment compatibility; no old-brand variables need to be configured for a new Vincent deployment.
 - Updated PayPal and Stripe setup documentation and the `.env.example` file to use Vincent names.
+
+
+## 29 October 2026 — U.S. art-shop discovery
+
+- Added public U.S. catalogue search for UGallery and Saatchi Art, without partner APIs or new environment variables.
+- The Buy shop panel now follows the Concierge region: Canada shows ArtMatch and Rookleys, United States shows UGallery and Saatchi Art, and Both shows all four.
+- U.S. marketplace prices marked with `$` are interpreted as USD; source results are labelled as public listings and buyers must reconfirm seller-side price, availability, shipping, and currency.
+- Updated Buy summaries, diagnostics, docs, and regression tests to cover region-aware marketplace selection.

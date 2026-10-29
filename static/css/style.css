@@ -54,7 +54,7 @@ a { color: inherit; }
 .topbar--landing { grid-template-columns: 1fr auto; }
 .brand {
   justify-self: start;
-  font-size: 1.5rem;
+  font-size: .84rem;
   font-weight: 700;
   letter-spacing: .16em;
   text-decoration: none;
@@ -1778,3 +1778,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 
 .dashboard-purchase-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.65rem; }
 @media (max-width: 640px) { .dashboard-purchase-actions { justify-content: flex-start; } }
+
+
+/* Region-specific shop links remain available when live inventory retrieval returns no matches. */
+.buy-shop-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.buy-shop-link { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; padding: 20px; border: 1px solid var(--line, #d9d9d9); border-radius: 14px; color: var(--text, #222); background: var(--surface, #fff); text-decoration: none; }
+.buy-shop-link:hover { border-color: var(--accent, #6d5dfc); }
+.buy-shop-link strong { font-size: 1rem; }
+.buy-shop-link span { color: var(--muted, #606060); font-size: .9rem; line-height: 1.45; }
+.buy-shop-link .buy-shop-action { margin-top: 4px; color: var(--accent, #5144d8); font-weight: 600; }
+@media (max-width: 620px) { .buy-shop-links { grid-template-columns: 1fr; } }

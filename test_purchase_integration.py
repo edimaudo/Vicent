@@ -13,6 +13,8 @@ from services.database import SESSION_COOKIE_NAME, get_order_for_user, list_orde
 from services.art_sources import (
     ArtMatchProvider,
     RookleysProvider,
+    UGalleryProvider,
+    SaatchiArtProvider,
     _parse_canadian_gallery_cards,
     commercial_providers,
 )
@@ -249,13 +251,94 @@ def test_paypal_invoice_requires_authorized_listing_and_records_invoice(monkeypa
     assert purchase["paymentStatus"] == "unpaid"
 
 
-def test_buy_sources_include_canadian_galleries_before_optional_marketplaces():
+def test_buy_sources_cover_public_canadian_and_us_shops_without_api_keys():
     names = [provider.name for provider in commercial_providers()]
-    assert names[:2] == ["ArtMatch", "Rookleys Canadian Art Gallery"]
-    assert {"Artsy", "Artlogic", "Collect24"}.issubset(names)
+    assert names == ["ArtMatch", "Rookleys Canadian Art Gallery", "UGallery", "Saatchi Art"]
     assert ArtMatchProvider.country_code == "CA"
     assert RookleysProvider.country_code == "CA"
+    assert UGalleryProvider.country_code == "US"
+    assert SaatchiArtProvider.country_code == "US"
+    assert UGalleryProvider.listing_url == "https://www.ugallery.com/collections/all-artworks"
+    assert SaatchiArtProvider.listing_url == "https://www.saatchiart.com/all"
 
+
+
+def test_public_shop_generic_buy_query_returns_available_inventory(monkeypatch):
+    import asyncio
+    import httpx
+    import services.art_sources as sources
+
+    html = """<article class="artwork-card">
+      <a href="https://artmatch.ca/canadian-art-for-sale/blue-garden"><img src="https://artmatch-wp-media.s3.us-west-1.amazonaws.com/blue-garden.jpg" alt="Jane Artist, Blue Garden"></a>
+      <h2 class="artwork-title">Blue Garden</h2><div class="artist-name">Jane Artist</div>
+      <p>CAD $500</p>
+    </article>"""
+
+    class FakeResponse:
+        status_code = 200
+        text = html
+        def raise_for_status(self): return None
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+        async def get(self, url): return FakeResponse()
+
+    monkeypatch.setattr(sources.httpx, "AsyncClient", FakeClient)
+    works = asyncio.run(sources.ArtMatchProvider().search("contemporary art for sale", limit=3))
+    assert len(works) == 1
+    assert works[0].title == "Blue Garden"
+    assert works[0].price == 500
+    assert works[0].availability == "available"
+
+
+
+
+
+@pytest.mark.parametrize("provider_cls,image_host", [
+    (UGalleryProvider, "https://www.ugallery.com/cdn/shop/files/blue-garden.jpg"),
+    (SaatchiArtProvider, "https://d32dm0rphc51dk.cloudfront.net/blue-garden.jpg"),
+])
+def test_us_shop_parsers_return_priced_public_listings_in_usd(provider_cls, image_host):
+    html = f'''<article class="artwork-card">
+      <a href="/artwork/blue-garden"><img src="{image_host}" alt="Jane Artist, Blue Garden"></a>
+      <h2 class="artwork-title">Blue Garden</h2><div class="artist-name">Jane Artist</div>
+      <p>$500</p>
+    </article>'''
+    works = _parse_canadian_gallery_cards(BeautifulSoup(html, "html.parser"), provider_cls.name, provider_cls.listing_url, "US")
+    assert len(works) == 1
+    assert works[0].title == "Blue Garden"
+    assert works[0].price == 500
+    assert works[0].currency == "USD"
+    assert works[0].market_code == "US"
+    assert works[0].availability == "available"
+
+
+def test_region_filter_selects_only_shops_for_the_requested_market():
+    from services.agent import _provider_in_region
+    providers = {provider.name: provider for provider in commercial_providers()}
+    for name in ("ArtMatch", "Rookleys Canadian Art Gallery"):
+        assert _provider_in_region(providers[name], "CA")
+        assert not _provider_in_region(providers[name], "US")
+        assert _provider_in_region(providers[name], "BOTH")
+    for name in ("UGallery", "Saatchi Art"):
+        assert _provider_in_region(providers[name], "US")
+        assert not _provider_in_region(providers[name], "CA")
+        assert _provider_in_region(providers[name], "BOTH")
+
+
+def test_setup_does_not_require_partner_art_api_variables():
+    root = Path(__file__).resolve().parent
+    example = (root / ".env.example").read_text()
+    config = (root / "services/config.py").read_text()
+    source = (root / "services/art_sources.py").read_text()
+    for variable in ("ARTSY_XAPP_TOKEN", "ARTSY_PARTNER_ID", "ARTLOGIC_FEED_URL", "COLLECT24_API_KEY"):
+        assert variable not in example
+        assert variable not in config
+    assert "class ArtsyProvider" not in source
+    assert "class ArtlogicProvider" not in source
+    assert "class Collect24Provider" not in source
 
 @pytest.mark.parametrize("provider_cls", [ArtMatchProvider, RookleysProvider])
 def test_canadian_gallery_parsers_require_price_and_available_status(provider_cls):
@@ -423,15 +506,13 @@ def test_region_scope_defaults_to_canada_and_only_accepts_supported_choices():
 
 def test_region_filter_routes_only_to_configured_country_sources():
     from services.agent import _provider_in_region
-    from services.art_sources import ArtMatchProvider, RookleysProvider, ArtInstituteProvider, MetProvider, ClevelandProvider, ArtsyProvider, ArtlogicProvider, Collect24Provider
+    from services.art_sources import ArtMatchProvider, RookleysProvider, ArtInstituteProvider, MetProvider, ClevelandProvider
     assert _provider_in_region(ArtMatchProvider(), "CA")
     assert _provider_in_region(RookleysProvider(), "CA")
     assert not _provider_in_region(ArtMatchProvider(), "US")
     assert not _provider_in_region(ArtInstituteProvider(), "CA")
     assert _provider_in_region(ArtInstituteProvider(), "US")
     assert _provider_in_region(MetProvider(), "BOTH")
-    assert _provider_in_region(Collect24Provider(), "CA")
-    assert _provider_in_region(Collect24Provider(), "US")
 
 
 def test_concierge_region_selector_defaults_to_canada_and_hides_in_learn():

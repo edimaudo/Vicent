@@ -48,7 +48,7 @@ def test_artwork_detail_page_allowlist_rejects_external_or_insecure_pages():
     assert is_allowed_detail_url("https://www.metmuseum.org/art/collection/search/123")
     assert is_allowed_detail_url("https://www.clevelandart.org/art/123")
     assert not is_allowed_detail_url("https://www.rijksmuseum.nl/en/collection/123")
-    assert is_allowed_detail_url("https://www.artsy.net/artwork/example")
+    assert is_allowed_detail_url("https://artmatch.ca/canadian-art-for-sale/example")
     assert not is_allowed_detail_url("http://www.artic.edu/artworks/123")
     assert not is_allowed_detail_url("https://www.artic.edu.evil.example/artworks/123")
     assert not is_allowed_detail_url("https://example.com/artwork")
@@ -178,12 +178,6 @@ def test_artwork_preview_route_recovers_from_img_src_when_og_image_is_missing(mo
     assert response.content == _valid_jpeg_bytes()
 
 
-def test_artsy_collection_pages_are_eligible_for_safe_image_fallback():
-    from services.image_proxy import is_allowed_detail_url
-    assert is_allowed_detail_url("https://www.artsy.net/artwork/example")
-    assert not is_allowed_detail_url("https://artsy.net.evil.example/artwork/example")
-
-
 def test_proxy_recognizes_valid_jpeg_bytes_with_generic_content_type():
     from main import _sniff_image_media_type
     assert _sniff_image_media_type("application/octet-stream", _valid_jpeg_bytes()) == "image/jpeg"
@@ -235,12 +229,8 @@ def test_concierge_api_caps_all_visible_artwork_cards_to_three(monkeypatch):
 def test_static_assets_are_versioned_to_avoid_stale_result_caps():
     from pathlib import Path
     html = (Path(__file__).resolve().parent / "templates/base.html").read_text()
-    assert "/static/js/app.js?v=20261028-paypal-sandbox-test-checkout" in html
-    assert "/static/css/style.css?v=20261028-paypal-sandbox-test-checkout" in html
-
-
-def test_artlogic_cloudfront_cdn_is_proxyable():
-    assert is_allowed_image_url("https://d7hftxdivxxvm.cloudfront.net/?resize_to=fit&width=900")
+    assert "/static/js/app.js?v=20261029-us-buy-shops" in html
+    assert "/static/css/style.css?v=20261029-us-buy-shops" in html
 
 
 def test_concierge_route_enforces_a_hard_response_deadline(monkeypatch):
@@ -269,12 +259,6 @@ def test_result_count_copy_reports_visible_recommendations_not_research_pool_siz
     js = (Path(__file__).resolve().parent / "static/js/app.js").read_text()
     assert "`${visibleCount} recommendation${visibleCount === 1 ? '' : 's'} shown`" in js
     assert "${data.total_found || 0} works researched" not in js
-
-
-def test_collect24_gallery_pages_and_images_are_eligible_for_safe_preview():
-    assert is_allowed_image_url("https://cdn.collect24.art/artwork/example.jpg")
-    assert is_allowed_image_url("https://images.collect24.art/artwork/example.jpg")
-    assert is_allowed_detail_url("https://www.collect24.art/artwork/example")
 
 
 def test_saved_more_like_action_starts_a_new_request():
@@ -481,18 +465,6 @@ def test_non_north_american_museum_hosts_are_no_longer_allowlisted():
     assert not is_allowed_detail_url("https://americanart.si.edu/artwork/example")
 
 
-def test_artsy_adapter_maps_large_image_and_rejects_missing_thumbnail():
-    from services.art_sources import _map_artsy
-    artwork = _map_artsy({
-        "id": "work-1", "title": "Bloom", "can_acquire": True,
-        "_embedded": {"artists": [{"name": "Yayoi Kusama"}]},
-        "_links": {"thumbnail": {"href": "https://d32dm0rphc51dk.cloudfront.net/abc/square.jpg"},
-                   "permalink": {"href": "https://www.artsy.net/artwork/work-1"}},
-    })
-    missing = _map_artsy({"id": "work-2", "title": "Missing", "_links": {"thumbnail": {"href": "https://d32dm0rphc51dk.cloudfront.net/assets/shared/missing_image.png"}}})
-    assert artwork.image_url == "https://d32dm0rphc51dk.cloudfront.net/abc/large.jpg"
-    assert missing.image_url is None
-
 def test_artwork_dedupes_across_provider_specific_ids():
     from services.agent import _dedupe_artworks
     from services.art_sources import Artwork
@@ -540,46 +512,14 @@ def test_page_preview_prefers_real_inline_art_over_generic_og_image(monkeypatch)
     assert logo_url not in calls
 
 
-def test_artsy_search_uses_configured_partner_inventory_not_retiring_public_search(monkeypatch):
-    import httpx
-    import services.art_sources as sources
-    monkeypatch.setattr(sources, "ARTSY_XAPP_TOKEN", "test-token")
-    monkeypatch.setattr(sources, "ARTSY_PARTNER_ID", "partner-123")
-    request_seen = {}
-    payload = {"_embedded": {"artworks": [
-        {"id": "a1", "title": "Red Bloom", "can_acquire": True, "sold": False,
-         "_embedded": {"artists": [{"name": "Yayoi Kusama"}]},
-         "_links": {"thumbnail": {"href": "https://d32dm0rphc51dk.cloudfront.net/a1/medium.jpg"}, "permalink": {"href": "https://www.artsy.net/artwork/a1"}}},
-        {"id": "a2", "title": "Blue Garden", "can_acquire": True, "sold": False,
-         "_embedded": {"artists": [{"name": "Another Artist"}]},
-         "_links": {"thumbnail": {"href": "https://d32dm0rphc51dk.cloudfront.net/a2/medium.jpg"}, "permalink": {"href": "https://www.artsy.net/artwork/a2"}}},
-    ]}}
-    class FakeClient:
-        def __init__(self, *args, **kwargs): request_seen["headers"] = kwargs.get("headers")
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): return False
-        async def get(self, url, **kwargs):
-            request_seen["url"] = url
-            request_seen["params"] = kwargs.get("params")
-            return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
-    monkeypatch.setattr(sources.httpx, "AsyncClient", FakeClient)
-    import asyncio
-    works = asyncio.run(sources.ArtsyProvider().search("Yayoi Kusama", limit=6))
-    assert len(works) == 1
-    assert works[0].artist == "Yayoi Kusama"
-    assert request_seen["url"].endswith("/artworks")
-    assert request_seen["params"]["partner_id"] == "partner-123"
-    assert request_seen["params"]["published"] == "true"
-
-
 def test_deduplication_preserves_distinct_untitled_works_by_same_artist():
     from services.agent import _dedupe_artworks
     from services.art_sources import Artwork
-    base = dict(artist="Yayoi Kusama", detail_url="https://www.artsy.net/artwork/example", source="Artsy", source_kind="commercial", availability="available", price=None, currency=None, medium=None, dimensions=None, year=None, description=None)
+    base = dict(artist="Yayoi Kusama", detail_url="https://artmatch.ca/canadian-art-for-sale/example", source="ArtMatch", source_kind="commercial", availability="available", price=None, currency=None, medium=None, dimensions=None, year=None, description=None)
     works = [
-        Artwork(id="artsy:1", title="Untitled", image_url="https://d32dm0rphc51dk.cloudfront.net/one/large.jpg", **base),
-        Artwork(id="artsy:2", title="Untitled", image_url="https://d32dm0rphc51dk.cloudfront.net/two/large.jpg", **base),
-        Artwork(id="artsy:3", title="Tsumari in Bloom", image_url="https://d32dm0rphc51dk.cloudfront.net/three/large.jpg", **base),
+        Artwork(id="artmatch:1", title="Untitled", image_url="https://artmatch-wp-media.s3.us-west-1.amazonaws.com/one.jpg", **base),
+        Artwork(id="artmatch:2", title="Untitled", image_url="https://artmatch-wp-media.s3.us-west-1.amazonaws.com/two.jpg", **base),
+        Artwork(id="artmatch:3", title="Tsumari in Bloom", image_url="https://artmatch-wp-media.s3.us-west-1.amazonaws.com/three.jpg", **base),
         Artwork(id="met:4", title="Tsumari in Bloom", image_url="https://images.metmuseum.org/three.jpg", **{**base, "source": "Met", "source_kind": "institution", "availability": "not_for_sale"}),
     ]
-    assert [work.id for work in _dedupe_artworks(works)] == ["artsy:1", "artsy:2", "artsy:3"]
+    assert [work.id for work in _dedupe_artworks(works)] == ["artmatch:1", "artmatch:2", "artmatch:3"]

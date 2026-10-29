@@ -1310,20 +1310,9 @@ async def diagnostics() -> dict[str, Any]:
         "commercial_sources": {
             "artmatch": {"configured": bool(config.ARTMATCH_LISTING_URL), "requires": []},
             "rookleys": {"configured": bool(config.ROOKLEYS_LISTING_URL), "requires": []},
-            "artsy": {
-                "configured": bool(config.ARTSY_XAPP_TOKEN and config.ARTSY_PARTNER_ID),
-                "requires": ["ARTSY_XAPP_TOKEN", "ARTSY_PARTNER_ID"],
-            },
-            "artlogic": {
-                "configured": bool(config.ARTLOGIC_FEED_URL),
-                "requires": ["ARTLOGIC_FEED_URL"],
-            },
-            "collect24": {
-                "configured": bool(config.COLLECT24_API_KEY),
-                "requires": ["COLLECT24_API_KEY"],
-            },
-            "purchase_search_ready": bool(config.ARTMATCH_LISTING_URL or config.ROOKLEYS_LISTING_URL or
-                (config.ARTSY_XAPP_TOKEN and config.ARTSY_PARTNER_ID) or config.ARTLOGIC_FEED_URL or config.COLLECT24_API_KEY),
+            "ugallery": {"configured": True, "requires": []},
+            "saatchi_art": {"configured": True, "requires": []},
+            "purchase_search_ready": True,
         },
         "stripe": {
             "configured": bool(config.STRIPE_SECRET_KEY),

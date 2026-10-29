@@ -304,18 +304,9 @@ def _taste_reference_directions(request: ConciergeRequest) -> list[str]:
 
 
 def _provider_market_codes(provider: Any) -> set[str]:
-    """Return market codes a configured provider can actually search."""
+    """Return the market explicitly supported by a provider."""
     country = str(getattr(provider, "country_code", "") or "").upper()
-    if country in {"CA", "US"}:
-        return {country}
-    name = str(getattr(provider, "name", ""))
-    if name == "Artsy":
-        return {config.ARTSY_PARTNER_MARKET} if config.ARTSY_PARTNER_MARKET in {"CA", "US"} else set()
-    if name == "Artlogic":
-        return {config.ARTLOGIC_MARKET} if config.ARTLOGIC_MARKET in {"CA", "US"} else set()
-    if name == "Collect24":
-        return {"CA", "US"}
-    return set()
+    return {country} if country in {"CA", "US"} else set()
 
 
 def _provider_in_region(provider: Any, region_scope: str) -> bool:
@@ -332,13 +323,8 @@ def _work_in_region(work: Artwork, region_scope: str) -> bool:
 
 
 def _provider_configured(provider: Any) -> bool:
-    if provider.name == "Artsy":
-        return bool(config.ARTSY_XAPP_TOKEN and config.ARTSY_PARTNER_ID)
-    if provider.name == "Artlogic":
-        return bool(config.ARTLOGIC_FEED_URL)
-    if provider.name == "Collect24":
-        return bool(config.COLLECT24_API_KEY)
-    # Other institutional collection APIs do not require application credentials.
+    # Active public collection APIs and Canadian shop pages require no partner key.
+    # Providers that depend on private feeds or paid credentials are not registered.
     return True
 
 
@@ -1416,9 +1402,27 @@ async def run_concierge(request: ConciergeRequest) -> dict[str, Any]:
             else "I used your stated interests and current brief to search for purchasable works that could expand your taste."
         ),
         "curate": "I searched purchasable works that fit your brief individually and make sense together as a group.",
-        "buy": "I searched connected sellers for works explicitly listed as available to purchase. Only buyable listings are shown.",
+        "buy": "",
         "learn": "I searched the requested artistic territory and selected works that help put the subject into context.",
     }[request.intent.value]
+    if request.intent.value == "buy":
+        region_scope = request.region_scope if request.region_scope in {"CA", "US", "BOTH"} else "CA"
+        shops_by_region = {
+            "CA": ["ArtMatch", "Rookleys Canadian Art Gallery"],
+            "US": ["UGallery", "Saatchi Art"],
+            "BOTH": ["ArtMatch", "Rookleys Canadian Art Gallery", "UGallery", "Saatchi Art"],
+        }
+        active_shop_names = shops_by_region[region_scope]
+        active_shop_stats = [stat for stat in source_map.values() if stat.get("provider") in active_shop_names]
+        market_label = {"CA": "Canadian", "US": "U.S.", "BOTH": "Canadian and U.S."}[region_scope]
+        if purchasable:
+            source_names = list(dict.fromkeys(work.source for work in purchasable if work.source))
+            count_label = f"{len(purchasable)} listing" + ("s" if len(purchasable) != 1 else "")
+            intent_summary = f"Found {count_label} marked available from {', '.join(source_names)}. Confirm the final price and availability with the seller."
+        elif active_shop_stats and all(stat.get("errors") for stat in active_shop_stats):
+            intent_summary = f"I couldn't retrieve live listings from the {market_label} art shops just now. Browse the shops below or retry your search."
+        else:
+            intent_summary = f"I didn't find listings matching those search terms in the {market_label} art shops. Browse the shops below or broaden your search."
     if _uses_saved_taste(request) and request.intent.value == "discover":
         intent_summary = "I used your saved artworks, taste notes, and earlier ideas to guide an exploration of related works explicitly available to acquire."
     if visual_analysis:
@@ -1433,6 +1437,7 @@ async def run_concierge(request: ConciergeRequest) -> dict[str, Any]:
     return {
         "success": True,
         "intent": request.intent.value,
+        "region_scope": request.region_scope if request.region_scope in {"CA", "US", "BOTH"} else "CA",
         "diagnostics": {
             "duration_ms": round((loop.time() - started) * 1000),
             "response_target_ms": response_target_ms,
@@ -1444,17 +1449,15 @@ async def run_concierge(request: ConciergeRequest) -> dict[str, Any]:
                 name for name, configured in [
                     ("ArtMatch", bool(config.ARTMATCH_LISTING_URL)),
                     ("Rookleys Canadian Art Gallery", bool(config.ROOKLEYS_LISTING_URL)),
-                    ("Artsy", bool(config.ARTSY_XAPP_TOKEN and config.ARTSY_PARTNER_ID)),
-                    ("Artlogic", bool(config.ARTLOGIC_FEED_URL)),
-                    ("Collect24", bool(config.COLLECT24_API_KEY)),
+                    ("UGallery", True),
+                    ("Saatchi Art", True),
                 ] if configured
             ],
             "commercial_source_count": sum(bool(value) for value in [
                 config.ARTMATCH_LISTING_URL,
                 config.ROOKLEYS_LISTING_URL,
-                config.ARTSY_XAPP_TOKEN and config.ARTSY_PARTNER_ID,
-                config.ARTLOGIC_FEED_URL,
-                config.COLLECT24_API_KEY,
+                True,
+                True,
             ]),
             "purchase_inventory_found": len(purchasable),
             "purchase_only_intent": purchase_only_intent,

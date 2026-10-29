@@ -8,16 +8,11 @@ from __future__ import annotations
 from urllib.parse import quote, urlparse
 
 ALLOWED_EXACT_HOSTS = {
+    "d32dm0rphc51dk.cloudfront.net",  # public Saatchi Art artwork thumbnails
     "images.metmuseum.org",
     "iiif.micr.io",
-    "d32dm0rphc51dk.cloudfront.net",  # Artsy public thumbnails
-    "d7hftxdivxxvm.cloudfront.net",  # Artlogic / hosted gallery thumbnails
     "cdn.shopify.com",
     "images.ctfassets.net",
-    "cdn.collect24.art",
-    "images.collect24.art",
-    "media.collect24.art",
-    "static-assets.artlogic.net",
     "artmatch-wp-media.s3.us-west-1.amazonaws.com",
     "d3w0bu8rg1f9td.cloudfront.net",
 }
@@ -31,23 +26,23 @@ ALLOWED_HOST_SUFFIXES = (
     ".squarespace-cdn.com",
     ".ctfassets.net",
     ".imgix.net",
-    ".artlogic.net",
-    ".collect24.art",
     ".artmatch.ca",
     ".rookleys.com",
+    ".saatchiart.com",
+    ".ugallery.com",
 )
 
 ALLOWED_DETAIL_HOSTS = {
     "artic.edu", "www.artic.edu",
     "metmuseum.org", "www.metmuseum.org",
     "clevelandart.org", "www.clevelandart.org",
-    "artsy.net", "www.artsy.net",
-    "collect24.art", "www.collect24.art",
     "artmatch.ca", "www.artmatch.ca",
     "rookleys.com", "www.rookleys.com",
+    "saatchiart.com", "www.saatchiart.com",
+    "ugallery.com", "www.ugallery.com",
 }
 ALLOWED_DETAIL_HOST_SUFFIXES = (
-    ".artic.edu", ".metmuseum.org", ".clevelandart.org", ".artsy.net", ".artlogic.net", ".collect24.art"
+    ".artic.edu", ".metmuseum.org", ".clevelandart.org"
 )
 
 

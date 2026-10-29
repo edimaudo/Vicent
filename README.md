@@ -10,7 +10,7 @@ A user-centric art concierge that combines broader cultural taste signals from Q
 - **Explore art** — discover unexpected directions; optionally enable **Use my saved taste** to build on saved artworks, profile notes, likes/avoids, and recent ideas. Personalised Explore searches only commercial inventory explicitly available to acquire.
 - **Find art** — search for a specific artist, artwork, style, subject, or medium.
 - **Curate a collection** — assemble a coherent set using commercial works explicitly available to acquire.
-- **Buy art** — search commercial seller listings explicitly marked available to acquire, prioritizing Canadian gallery inventory before other configured North American commercial sources.
+- **Buy art** — search public Canadian and U.S. art-shop catalogues for listings with a price, image, and seller page; final availability is reconfirmed at the seller.
 - **Learn about art** — generate an educational guide from a required written topic. The image-inspiration uploader is hidden in this mode; enter the artwork title, artist, movement, technique, or idea. Learn does not run artwork catalogue searches or display artwork recommendation cards.
 
 ## Concierge intelligence
@@ -43,15 +43,13 @@ The Qloo implementation does not use the unsupported `/recommendations` or `/rec
 
 ### Canadian-first commercial sources
 
-**ArtMatch** (`ARTMATCH_LISTING_URL`) and **Rookleys Canadian Art Gallery** (`ROOKLEYS_LISTING_URL`) are integrated as public Canadian listing sources. The parser only retains entries with a concrete price and an available status signal. Seller-side purchases are opened on the source website and tracked as `EXTERNAL_PENDING` in the signed-in user account; Vincent does not claim that a seller redirect confirms a completed order.
+**Canadian shops:** **ArtMatch** (`ARTMATCH_LISTING_URL`) and **Rookleys Canadian Art Gallery** (`ROOKLEYS_LISTING_URL`) are integrated from their public listing pages. The parser retains entries with a concrete price, usable image, seller page, and no sold/unavailable signal.
+
+**U.S. online art shops:** **UGallery** (`https://www.ugallery.com/collections/all-artworks`) and **Saatchi Art** (`https://www.saatchiart.com/all`) are integrated from their public catalogues. Neither requires a partner API key or private feed. The U.S. selector means the app searches these U.S.-based online storefronts; artwork artists may be international. Seller-side purchases open on the shop website and are tracked as `EXTERNAL_PENDING`; Vincent does not claim that a redirect confirms a completed order. Always reconfirm price, availability, shipping, and currency with the seller.
 
 ### Commercial
 
-**Artsy** is supported through an optional Partner API adapter. The application does not depend on the retiring public API. Configure `ARTSY_XAPP_TOKEN` and `ARTSY_PARTNER_ID` when partner access is available. The adapter uses the partner search endpoint and follows artwork self-links; credentials are still required and are not bundled with Vincent.
-
-**Artlogic** is supported as an optional server-side feed adapter. Configure `ARTLOGIC_FEED_URL` only for a gallery/account that has authorized the feed.
-
-**Collect24** is supported as an optional commercial registry adapter. It exposes public artwork records with explicit `for_sale` availability and public price fields. Configure `COLLECT24_API_KEY` server-side when access is available.
+Vincent's default Buy search uses public Canadian and U.S. shop catalogues, with no paid partner API keys or private gallery feeds. Canada searches **ArtMatch** and **Rookleys Canadian Art Gallery**; United States searches **UGallery** and **Saatchi Art**. Links open the seller's own checkout, and prices and availability must be reconfirmed with the seller.
 
 ### Account and purchasing
 
@@ -215,11 +213,8 @@ For deployment troubleshooting:
 
 ## Buy source configuration and diagnostics
 
-Curate a collection, Explore art with **Use my saved taste** enabled, and Buy art search **commercial inventory only**. Museum collection APIs can supply records for general Explore and Find, but those records are not acquisition listings and are not queried by purchase-oriented modes. Learn about art generates a written-topic guide without querying collection APIs. Commercial source readiness is reported by `GET /api/diagnostics`; credentials and gallery feed URLs remain server-side.
+Curate a collection, Explore art with **Use my saved taste** enabled, and Buy art search **commercial inventory only**. Museum collection APIs can supply records for general Explore and Find, but those records are not acquisition listings and are not queried by purchase-oriented modes. Learn about art generates a written-topic guide without querying collection APIs. The public shop-source readiness and result counts are reported by `GET /api/diagnostics`.
 
-- Artsy requires partner-approved access and both `ARTSY_XAPP_TOKEN` and `ARTSY_PARTNER_ID`.
-- Artlogic requires an authorized gallery/account feed URL in `ARTLOGIC_FEED_URL`.
-- Collect24 requires a server-side `COLLECT24_API_KEY`.
 - Stripe checkout also requires a server-side secret and entries in `VINCENT_STRIPE_CHECKOUT_CATALOG` for artworks enabled for Vincent checkout. External “Buy / enquire” links can only be shown when a commercial source provides a seller page.
 
 No commercial inventory provider can be treated as connected simply because museum image APIs are available. Keep provider failures in backend diagnostics/logs; do not expose upstream HTTP errors in the customer-facing Buy panel.
@@ -227,7 +222,7 @@ No commercial inventory provider can be treated as connected simply because muse
 
 ### Buy inventory requirements
 
-Curate a collection, personalised Explore, and Buy art are limited to connected commercial sellers and gallery feeds. They do not use institutional collection APIs as purchasable inventory. Artsy results are eligible only when `can_acquire` is true and the listing is not sold; Artlogic rows must explicitly declare a purchase-availability value; Collect24 rows must declare `for_sale`. Configure at least one of `ARTSY_XAPP_TOKEN` plus `ARTSY_PARTNER_ID`, `ARTLOGIC_FEED_URL`, or `COLLECT24_API_KEY` in the server environment. If no selling source is configured, the interface explains that no seller inventory is connected rather than showing museum collection records. When the user enables **Use my saved taste** in Explore art, Vincent sends saved artwork metadata, saved profile notes, and recent ideas for that request and uses them in provider search directions and relevance scoring. The toggle also enforces commercial inventory explicitly available to acquire. Older `intent=taste` links remain supported and open Explore art with personalization enabled.
+Curate a collection, personalised Explore, and Buy art are limited to publicly accessible commercial listings from four no-key sources: **ArtMatch** and **Rookleys Canadian Art Gallery** (Canada), plus **UGallery** and **Saatchi Art** (United States). They do not use institutional records as purchasable inventory and do not require partner API keys. The HTML parsers retain listings with a price, usable image, seller page, and no sold/unavailable signal. Generic Buy prompts are treated as broad browsing requests, not strict title keywords; specific artist/title searches are filtered when matching metadata is available. The Buy page always provides direct shop links: Canada shows ArtMatch and Rookleys, United States shows UGallery and Saatchi Art, and Both shows all four. **The search region refers to the shop catalogue searched, not the artist's nationality.** When the user enables **Use my saved taste** in Explore art, Vincent uses saved artwork metadata, saved profile notes, and recent ideas to guide provider directions and relevance scoring. Older `intent=taste` links remain supported and open Explore art with personalization enabled.
 
 ### Learn about art
 
@@ -240,6 +235,6 @@ For signed-in users, Vincent merges the persisted taste profile into current req
 
 ### Search region
 
-Concierge has a region selector for **Canada**, **United States**, or **Both Canada and the US**. Canada is preselected. The selected market is saved as a lightweight browser preference and applied to provider selection and the returned artwork records. Canada uses the current Canadian gallery sources and configured CA feeds; the United States uses US museum collections and configured US feeds; Both searches all configured Canadian and US sources. Providers with a single configured market (such as an Artsy/Artlogic partner feed) only serve that market even when Both is selected. Learn hides the region control because it does not search artwork catalogues.
+Concierge has a region selector for **Canada**, **United States**, or **Both Canada and the US**. Canada is preselected. The selected market is saved as a lightweight browser preference and applied to provider selection and returned artwork records. Canada searches ArtMatch and Rookleys; the United States searches UGallery and Saatchi Art; Both searches all four shop catalogues. Buy never substitutes museum records for shop inventory. Learn hides the region control because it does not search artwork catalogues.
 
 PayPal defaults to sandbox mode through `PAYPAL_MODE=sandbox`. `GET /api/diagnostics` reports PayPal credential readiness, sandbox/live mode, region/locale, and the number of valid approved catalog rows, without returning secrets. Payment-processor names and sandbox/live status are exposed in the Purchases/payment section and checkout status pages, not general art discovery cards.
