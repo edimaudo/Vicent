@@ -422,3 +422,17 @@
 - Kept structured search filters in the user's Concierge prompt; no separate filter form was introduced.
 - Kept the existing Buy flow for third-party gallery checkout hand-offs. PayPal Sandbox supports tracking details on captured PayPal transactions, but it cannot expose transactions completed through external sellers' own checkout accounts. Shipment details must be supplied by the seller.
 - Added database tables for collections, collection items, artwork alerts, and alert events. Existing databases initialize the new tables through the existing SQLAlchemy metadata initialization.
+
+
+## 2026-10-30 — Keep artwork results visible when images fail
+
+- Find, Explore, Curate, and Buy result cards are no longer removed when their remote image and fallback image requests fail.
+- The image area now displays a neutral unavailable-image placeholder while preserving artwork metadata, seller links, save, compare, collection and alert actions.
+- Added regression coverage for the image-failure path.
+
+## 2026-10-30 — Branded 404 page
+
+- Added a Vincent-branded 404 page for unknown browser routes, with links to the home page and Concierge.
+- Signed-out visitors are sent through sign-in before opening Concierge; signed-in visitors go directly to Concierge.
+- API and static-file errors remain non-HTML responses so clients do not receive an application page in place of JSON or an asset.
+- Updated static asset versions to prevent stale cached styles and scripts after deployment.

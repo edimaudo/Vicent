@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Page not found | Vincent{% endblock %}
+
+{% block content %}
+<section class="not-found-page shell" aria-labelledby="not-found-title">
+  <div class="not-found-content">
+    <p class="eyebrow">404 · PAGE NOT FOUND</p>
+    <h1 id="not-found-title">This page isn't in our collection.</h1>
+    <p class="not-found-copy">The address may be incorrect, or the page may have moved. Return to Vincent and continue exploring.</p>
+    <div class="not-found-actions">
+      {% if current_user %}
+      <a class="primary-button" href="/concierge">Ask my concierge</a>
+      {% else %}
+      <a class="primary-button" href="/login?next=%2Fconcierge">Ask my concierge</a>
+      {% endif %}
+      <a class="secondary-button" href="/">Go to Vincent home</a>
+    </div>
+  </div>
+  <div class="not-found-art" aria-hidden="true">
+    <span class="not-found-art__number">404</span>
+    <span class="not-found-art__frame"></span>
+  </div>
+</section>
+{% endblock %}

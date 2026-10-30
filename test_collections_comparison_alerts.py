@@ -170,7 +170,7 @@ def test_dashboard_page_renders_new_feature_panels_for_signed_in_account(monkeyp
     assert response.status_code == 200
     for marker in ('id="collectionsTab"', 'id="alertsTab"', 'id="compareTab"', 'id="comparePanel"', 'id="checkAlertsButton"', 'id="comparisonModal"'):
         assert marker in response.text
-    assert "20261030-dashboard-curation-compare-gogh" in response.text
+    assert "20261030-custom-404" in response.text
     assert 'id="collectionCreateForm"' not in response.text
     assert 'id="dashboardComparisonContent"' in response.text
 

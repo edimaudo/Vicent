@@ -156,7 +156,7 @@ def test_checkout_return_page_never_claims_payment_before_verification():
     assert 'data-checkout-status="verify"' in response.text
     assert "the Checkout Session with Stripe" in response.text
     assert "Your checkout is complete." not in response.text
-    assert "/static/js/app.js?v=20261030-dashboard-curation-compare-gogh" in response.text
+    assert "/static/js/app.js?v=20261030-custom-404" in response.text
 
 
 def test_stripe_session_retrieval_uses_authenticated_stripe_api(monkeypatch):

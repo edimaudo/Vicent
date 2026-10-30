@@ -19,6 +19,7 @@ from html.parser import HTMLParser
 import httpx
 
 from fastapi import FastAPI, HTTPException, Request
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -64,6 +65,27 @@ def _template_context(request: Request) -> dict[str, Any]:
 
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[_template_context])
+
+
+@app.exception_handler(StarletteHTTPException)
+async def handle_http_exception(request: Request, exc: StarletteHTTPException):
+    """Render a branded 404 for browser pages while keeping API errors machine-readable."""
+    if exc.status_code == 404 and not request.url.path.startswith(("/api/", "/static/")):
+        return templates.TemplateResponse(
+            request=request,
+            name="404.html",
+            context={
+                "title": "Page not found | Vincent",
+                "page": "not-found",
+                "requested_path": request.url.path,
+            },
+            status_code=404,
+        )
+
+    content = {"detail": exc.detail}
+    return JSONResponse(content, status_code=exc.status_code, headers=exc.headers)
+
+
 _DEMO_SESSION_SECRET = (
     config.VINCENT_DEMO_SESSION_SECRET.encode("utf-8")
     if config.VINCENT_DEMO_SESSION_SECRET

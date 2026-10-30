@@ -1414,11 +1414,25 @@
           image.src = `/api/artwork-preview?url=${encodeURIComponent(detailUrl)}`;
           return;
         }
-        // Remove the card if no exact or source-page artwork image can be loaded.
-        const card = image.closest('.art-card');
-        const savedThumb = image.closest('.saved-thumb');
-        if (card) card.remove();
-        else if (savedThumb) savedThumb.remove();
+        // A failed remote image must never remove an artwork result. The source
+        // listing can still be useful for its title, artist, price and seller link.
+        // Keep the card and replace only the image area with a neutral placeholder.
+        if (image.dataset.imageUnavailable === 'true') return;
+        image.dataset.imageUnavailable = 'true';
+        image.style.display = 'none';
+        const host = image.closest('.art-image-wrap, .saved-thumb') || image.parentElement;
+        if (host && !host.querySelector('.art-image-unavailable')) {
+          if (host.classList.contains('saved-thumb')) host.classList.add('no-image');
+          const placeholder = document.createElement('div');
+          placeholder.className = 'art-image-unavailable';
+          placeholder.setAttribute('role', 'img');
+          const artworkTitle = String(image.dataset.artworkTitle || image.alt || 'Artwork').trim();
+          placeholder.setAttribute('aria-label', `Image unavailable for ${artworkTitle}`);
+          const label = document.createElement('span');
+          label.textContent = 'Image unavailable';
+          placeholder.appendChild(label);
+          host.appendChild(placeholder);
+        }
       };
       image.addEventListener('error', advanceFallback);
       // A cached request can fail before handlers are attached after the card
