@@ -99,6 +99,49 @@ class PurchaseOrder(Base):
     __table_args__ = (UniqueConstraint("provider", "provider_order_id", name="uq_artco_order_provider_ref"),)
 
 
+class ArtworkCollection(Base):
+    __tablename__ = "artco_artwork_collections"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("artco_users.id", ondelete="CASCADE"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class ArtworkCollectionItem(Base):
+    __tablename__ = "artco_artwork_collection_items"
+    collection_id: Mapped[str] = mapped_column(ForeignKey("artco_artwork_collections.id", ondelete="CASCADE"), primary_key=True)
+    artwork_id: Mapped[str] = mapped_column(String(180), primary_key=True)
+    artwork_json: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Float, default=0, nullable=False)
+    added_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class ArtworkAlert(Base):
+    __tablename__ = "artco_artwork_alerts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("artco_users.id", ondelete="CASCADE"), index=True, nullable=False)
+    alert_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    target_json: Mapped[str] = mapped_column(Text, nullable=False)
+    baseline_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    last_checked_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class ArtworkAlertEvent(Base):
+    __tablename__ = "artco_artwork_alert_events"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    alert_id: Mapped[str] = mapped_column(ForeignKey("artco_artwork_alerts.id", ondelete="CASCADE"), index=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("artco_users.id", ondelete="CASCADE"), index=True, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    message: Mapped[str] = mapped_column(String(500), nullable=False)
+    data_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
 _engine_cache: dict[str, Any] = {}
 _sessionmaker_cache: dict[str, Any] = {}
 _initialized_urls: set[str] = set()
@@ -383,3 +426,168 @@ def get_order_for_user(user_id: str, provider_order_id: str, provider: str | Non
             stmt = stmt.where(PurchaseOrder.provider == provider)
         row = session.scalar(stmt)
         return order_to_dict(row) if row else None
+
+
+def _json_object(value: str | None) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value or "{}")
+        return parsed if isinstance(parsed, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+def collection_to_dict(row: ArtworkCollection, items: list[ArtworkCollectionItem] | None = None) -> dict[str, Any]:
+    works = []
+    for item in items or []:
+        data = _json_object(item.artwork_json)
+        if data:
+            works.append(data)
+    return {"id": row.id, "name": row.name, "description": row.description, "artworks": works,
+            "createdAt": row.created_at, "updatedAt": row.updated_at}
+
+
+def list_collections(user_id: str) -> list[dict[str, Any]]:
+    with db_session() as session:
+        rows = session.scalars(select(ArtworkCollection).where(ArtworkCollection.user_id == user_id).order_by(ArtworkCollection.updated_at.desc())).all()
+        output = []
+        for row in rows:
+            items = session.scalars(select(ArtworkCollectionItem).where(ArtworkCollectionItem.collection_id == row.id).order_by(ArtworkCollectionItem.position, ArtworkCollectionItem.added_at)).all()
+            output.append(collection_to_dict(row, items))
+        return output
+
+
+def create_collection(user_id: str, collection_id: str, name: str, description: str = "") -> dict[str, Any]:
+    clean_name = str(name or "").strip()[:100]
+    if not clean_name:
+        raise ValueError("Give the collection a name.")
+    if len(clean_name) < 2:
+        raise ValueError("Collection names must contain at least two characters.")
+    collection_id = str(collection_id or uuid.uuid4())[:36]
+    now = time.time()
+    with db_session() as session:
+        if session.query(ArtworkCollection).filter_by(user_id=user_id).count() >= 30:
+            raise ValueError("You can create up to 30 collections.")
+        existing = session.get(ArtworkCollection, collection_id)
+        if existing and existing.user_id != user_id:
+            raise PermissionError("That collection ID is already in use.")
+        if not existing:
+            existing = ArtworkCollection(id=collection_id, user_id=user_id, name=clean_name,
+                                         description=str(description or "")[:500], created_at=now, updated_at=now)
+            session.add(existing)
+        else:
+            existing.name = clean_name
+            existing.description = str(description or "")[:500]
+            existing.updated_at = now
+        return collection_to_dict(existing, [])
+
+
+def delete_collection(user_id: str, collection_id: str) -> None:
+    with db_session() as session:
+        row = session.scalar(select(ArtworkCollection).where(ArtworkCollection.id == collection_id, ArtworkCollection.user_id == user_id))
+        if row:
+            session.execute(delete(ArtworkCollectionItem).where(ArtworkCollectionItem.collection_id == collection_id))
+            session.delete(row)
+
+
+def add_collection_artwork(user_id: str, collection_id: str, artwork: dict[str, Any]) -> None:
+    artwork_id = str(artwork.get("id") or "").strip()[:180]
+    if not artwork_id:
+        raise ValueError("Artwork ID is required.")
+    data = {k: v for k, v in artwork.items() if k not in {"inspiration_images", "image_data"}}
+    now = time.time()
+    with db_session() as session:
+        collection = session.scalar(select(ArtworkCollection).where(ArtworkCollection.id == collection_id, ArtworkCollection.user_id == user_id))
+        if not collection:
+            raise LookupError("Collection not found.")
+        row = session.get(ArtworkCollectionItem, {"collection_id": collection_id, "artwork_id": artwork_id})
+        if not row:
+            count = session.query(ArtworkCollectionItem).filter_by(collection_id=collection_id).count()
+            if count >= 100:
+                raise ValueError("A collection can contain up to 100 artworks.")
+            row = ArtworkCollectionItem(collection_id=collection_id, artwork_id=artwork_id,
+                                        artwork_json=json.dumps(data, ensure_ascii=False), position=count, added_at=now)
+            session.add(row)
+        else:
+            row.artwork_json = json.dumps(data, ensure_ascii=False)
+        collection.updated_at = now
+
+
+def remove_collection_artwork(user_id: str, collection_id: str, artwork_id: str) -> None:
+    with db_session() as session:
+        collection = session.scalar(select(ArtworkCollection).where(ArtworkCollection.id == collection_id, ArtworkCollection.user_id == user_id))
+        if collection:
+            session.execute(delete(ArtworkCollectionItem).where(ArtworkCollectionItem.collection_id == collection_id,
+                                                                  ArtworkCollectionItem.artwork_id == artwork_id[:180]))
+            collection.updated_at = time.time()
+
+
+def alert_to_dict(row: ArtworkAlert, events: list[ArtworkAlertEvent] | None = None) -> dict[str, Any]:
+    return {"id": row.id, "type": row.alert_type, "target": _json_object(row.target_json),
+            "baseline": _json_object(row.baseline_json), "active": bool(row.active),
+            "createdAt": row.created_at, "lastCheckedAt": row.last_checked_at,
+            "events": [{"id": event.id, "type": event.event_type, "message": event.message,
+                        "data": _json_object(event.data_json), "read": bool(event.is_read), "createdAt": event.created_at}
+                       for event in (events or [])]}
+
+
+def list_artwork_alerts(user_id: str) -> list[dict[str, Any]]:
+    with db_session() as session:
+        rows = session.scalars(select(ArtworkAlert).where(ArtworkAlert.user_id == user_id).order_by(ArtworkAlert.created_at.desc())).all()
+        output = []
+        for row in rows:
+            events = session.scalars(select(ArtworkAlertEvent).where(ArtworkAlertEvent.alert_id == row.id).order_by(ArtworkAlertEvent.created_at.desc()).limit(30)).all()
+            output.append(alert_to_dict(row, events))
+        return output
+
+
+def create_artwork_alert(user_id: str, alert_id: str, alert_type: str, target: dict[str, Any], baseline: dict[str, Any] | None = None) -> dict[str, Any]:
+    if alert_type not in {"artwork", "seller"}:
+        raise ValueError("Alert type must be artwork or seller.")
+    alert_id = str(alert_id or uuid.uuid4())[:36]
+    now = time.time()
+    with db_session() as session:
+        if session.query(ArtworkAlert).filter_by(user_id=user_id).count() >= 50:
+            raise ValueError("You can follow up to 50 artworks and sellers.")
+        existing = session.get(ArtworkAlert, alert_id)
+        if existing and existing.user_id != user_id:
+            raise PermissionError("That alert ID is already in use.")
+        if not existing:
+            existing = ArtworkAlert(id=alert_id, user_id=user_id, alert_type=alert_type,
+                                    target_json=json.dumps(target, ensure_ascii=False),
+                                    baseline_json=json.dumps(baseline or {}, ensure_ascii=False),
+                                    active=True, created_at=now, last_checked_at=None)
+            session.add(existing)
+        return alert_to_dict(existing, [])
+
+
+def delete_artwork_alert(user_id: str, alert_id: str) -> None:
+    with db_session() as session:
+        row = session.scalar(select(ArtworkAlert).where(ArtworkAlert.id == alert_id, ArtworkAlert.user_id == user_id))
+        if row:
+            session.execute(delete(ArtworkAlertEvent).where(ArtworkAlertEvent.alert_id == alert_id))
+            session.delete(row)
+
+
+def update_artwork_alert_check(user_id: str, alert_id: str, baseline: dict[str, Any], event: dict[str, Any] | None = None) -> None:
+    now = time.time()
+    with db_session() as session:
+        row = session.scalar(select(ArtworkAlert).where(ArtworkAlert.id == alert_id, ArtworkAlert.user_id == user_id))
+        if not row:
+            return
+        row.baseline_json = json.dumps(baseline, ensure_ascii=False)
+        row.last_checked_at = now
+        if event:
+            session.add(ArtworkAlertEvent(id=str(uuid.uuid4()), alert_id=alert_id, user_id=user_id,
+                                          event_type=str(event.get("type") or "update")[:40],
+                                          message=str(event.get("message") or "Artwork alert update")[:500],
+                                          data_json=json.dumps(event.get("data") or {}, ensure_ascii=False),
+                                          is_read=False, created_at=now))
+
+
+def mark_artwork_alert_events_read(user_id: str, alert_id: str | None = None) -> None:
+    with db_session() as session:
+        stmt = select(ArtworkAlertEvent).where(ArtworkAlertEvent.user_id == user_id)
+        if alert_id:
+            stmt = stmt.where(ArtworkAlertEvent.alert_id == alert_id)
+        for event in session.scalars(stmt).all():
+            event.is_read = True

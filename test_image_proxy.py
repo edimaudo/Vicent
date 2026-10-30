@@ -229,8 +229,8 @@ def test_concierge_api_caps_all_visible_artwork_cards_to_three(monkeypatch):
 def test_static_assets_are_versioned_to_avoid_stale_result_caps():
     from pathlib import Path
     html = (Path(__file__).resolve().parent / "templates/base.html").read_text()
-    assert "/static/js/app.js?v=20261029-us-buy-shops" in html
-    assert "/static/css/style.css?v=20261029-us-buy-shops" in html
+    assert "/static/js/app.js?v=20261029-collections-comparison-alerts" in html
+    assert "/static/css/style.css?v=20261029-collections-comparison-alerts" in html
 
 
 def test_concierge_route_enforces_a_hard_response_deadline(monkeypatch):

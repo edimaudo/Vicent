@@ -1,5 +1,5 @@
 (() => {
-  const STATE_VERSION = 9;
+  const STATE_VERSION = 10;
   const initialQuery = new URLSearchParams(window.location.search);
   const requestedIntent = initialQuery.get('intent') || 'discover';
   const validIntents = ['discover', 'find', 'curate', 'buy', 'learn'];
@@ -11,6 +11,10 @@
     saved: [],
     recent: [],
     purchases: [],
+    collections: [],
+    alerts: [],
+    compare: [],
+    pendingCollectionArtworkId: null,
     last: null,
     preferences: {
       theme: (() => {
@@ -88,6 +92,9 @@
       saved: state.saved,
       recent: state.recent,
       purchases: state.purchases,
+      collections: state.collections,
+      alerts: state.alerts,
+      compare: state.compare,
       last: state.last,
       preferences: state.preferences,
     };
@@ -131,12 +138,41 @@
   }
 
   async function syncSavedToServer(artwork, action = 'save') {
-    if (!state.user || !artwork?.id) return;
+    if (!state.user || state.user.demo || !artwork?.id) return;
     const data = await accountFetch('/api/account/saved', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(action === 'remove' ? { action, artwork_id: artwork.id } : { action, artwork }),
     });
     if (Array.isArray(data.saved)) state.saved = data.saved;
+    await persistAppState();
+  }
+
+  function makeId(prefix = 'vincent') {
+    return `${prefix}-${(window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
+  }
+
+  async function syncCollectionState(collection, action = 'save', artwork = null) {
+    if (!state.user || state.user.demo) return;
+    let data;
+    if (action === 'create') {
+      data = await accountFetch('/api/account/collections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(collection) });
+    } else if (action === 'delete') {
+      data = await accountFetch(`/api/account/collections/${encodeURIComponent(collection.id)}`, { method: 'DELETE' });
+    } else if (action === 'add') {
+      data = await accountFetch(`/api/account/collections/${encodeURIComponent(collection.id)}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ artwork }) });
+    } else if (action === 'remove') {
+      data = await accountFetch(`/api/account/collections/${encodeURIComponent(collection.id)}/items/${encodeURIComponent(artwork.id)}`, { method: 'DELETE' });
+    }
+    if (Array.isArray(data?.collections)) state.collections = data.collections;
+    await persistAppState();
+  }
+
+  async function syncAlertState(alert, action = 'create') {
+    if (!state.user || state.user.demo) return;
+    const data = action === 'delete'
+      ? await accountFetch(`/api/account/alerts/${encodeURIComponent(alert.id)}`, { method: 'DELETE' })
+      : await accountFetch('/api/account/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(alert) });
+    if (Array.isArray(data?.alerts)) state.alerts = data.alerts;
     await persistAppState();
   }
 
@@ -154,7 +190,7 @@
       } else if (hasLocalProfile) {
         await syncProfileToServer();
       }
-      if (Array.isArray(data.saved)) {
+      if (Array.isArray(data.saved) && !data.demo_mode) {
         if (data.saved.length) state.saved = data.saved;
         else if (state.saved.length) {
           for (const artwork of state.saved) {
@@ -164,6 +200,8 @@
       }
       if (Array.isArray(data.recent) && data.recent.length) state.recent = data.recent;
       if (Array.isArray(data.purchases)) state.purchases = data.purchases;
+      if (!data.demo_mode && Array.isArray(data.collections)) state.collections = data.collections;
+      if (!data.demo_mode && Array.isArray(data.alerts)) state.alerts = data.alerts;
       state.tasteDraft = cloneProfile(state.profile);
       await persistAppState();
     } catch (error) {
@@ -215,6 +253,9 @@
         state.saved = Array.isArray(existing.saved) ? existing.saved.slice(0, 40) : [];
         state.recent = Array.isArray(existing.recent) ? existing.recent.slice(0, 8) : [];
         state.purchases = Array.isArray(existing.purchases) ? existing.purchases.slice(0, 12) : [];
+        state.collections = Array.isArray(existing.collections) ? existing.collections.slice(0, 30) : [];
+        state.alerts = Array.isArray(existing.alerts) ? existing.alerts.slice(0, 50) : [];
+        state.compare = Array.isArray(existing.compare) ? existing.compare.slice(0, 3) : [];
         state.last = existing.last || null;
         let immediateTheme = null;
         try { immediateTheme = (window.localStorage.getItem('vincentThemePreference') ?? window.localStorage.getItem('artcoThemePreference')); } catch (_) { /* storage may be blocked */ }
@@ -619,6 +660,271 @@
     }).join('');
   }
 
+  function renderCompareDock() {
+    const dock = $('#compareDock');
+    const count = $('#compareDockCount');
+    if (!dock) return;
+    const selected = state.compare.length;
+    dock.hidden = selected === 0;
+    if (count) count.textContent = `${selected} artwork${selected === 1 ? '' : 's'} selected`;
+    const open = $('#openComparisonButton');
+    if (open) { open.disabled = selected < 2; open.textContent = selected < 2 ? 'Select one more to compare' : `Compare ${selected} artworks`; }
+  }
+
+  function toggleComparison(id) {
+    const existing = state.compare.findIndex((work) => work.id === id);
+    if (existing >= 0) state.compare.splice(existing, 1);
+    else {
+      const work = getArtworkById(id);
+      if (!work) return;
+      if (state.compare.length >= 3) {
+        const note = $('#purchaseMessage') || $('#collectionsMessage');
+        if (note) note.textContent = 'Compare up to three artworks at a time. Remove one to add another.';
+        return;
+      }
+      state.compare.push(structuredCloneSafe(work));
+    }
+    persistAppState();
+    renderCompareDock();
+    if (state.last && window.ART_CONCIERGE_PAGE === 'results') renderResults(state.last);
+    if (window.ART_CONCIERGE_PAGE === 'saved') renderSavedPage();
+    if (window.ART_CONCIERGE_PAGE === 'dashboard') renderCollectionsPanel();
+  }
+
+  function artworkPriceLabel(work) {
+    if (work.price === null || work.price === undefined || !Number.isFinite(Number(work.price))) return 'Not listed';
+    try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: String(work.currency || 'CAD').toUpperCase() }).format(Number(work.price)); }
+    catch (_) { return `${Number(work.price).toFixed(2)} ${String(work.currency || 'CAD').toUpperCase()}`; }
+  }
+
+  function renderComparison() {
+    const modal = $('#comparisonModal');
+    const content = $('#comparisonContent');
+    if (!modal || !content) return;
+    const works = state.compare.slice(0, 3);
+    if (works.length < 2) {
+      content.innerHTML = '<p class="empty-state">Select at least two artworks to compare.</p>';
+      return;
+    }
+    const fields = [
+      ['Artist', (work) => work.artist || 'Not listed'],
+      ['Price', artworkPriceLabel],
+      ['Medium', (work) => work.medium || 'Not listed'],
+      ['Dimensions', (work) => work.dimensions || 'Not listed'],
+      ['Year', (work) => work.year || 'Not listed'],
+      ['Seller / source', (work) => work.seller_name || work.source || 'Not listed'],
+      ['Availability', (work) => work.availability === 'available' ? 'Listed as available' : 'Not listed as available'],
+      ['Description', (work) => work.description || 'Not provided'],
+    ];
+    const imageCells = works.map((work) => {
+      const image = work.display_image_url || work.image_url || artworkFallbackUrl(work.title, work.artist);
+      return `<td><img class="comparison-image" src="${escapeAttribute(image)}" alt="${escapeAttribute(work.title || 'Artwork')}" loading="lazy"><strong>${escapeHtml(work.title || 'Untitled')}</strong></td>`;
+    }).join('');
+    const rows = fields.map(([label, getter]) => `<tr><th scope="row">${escapeHtml(label)}</th>${works.map((work) => `<td>${escapeHtml(getter(work))}</td>`).join('')}</tr>`).join('');
+    content.innerHTML = `<div class="comparison-table-wrap"><table class="comparison-table"><thead><tr><th scope="col"> </th>${imageCells}</tr></thead><tbody>${rows}<tr><th scope="row">Open listing</th>${works.map((work) => `<td>${work.detail_url ? `<a href="${escapeAttribute(work.detail_url)}" target="_blank" rel="noopener noreferrer">View seller listing ↗</a>` : 'Not available'}</td>`).join('')}</tr></tbody></table></div>`;
+    bindArtworkImageFallbacks(content);
+  }
+
+  function openComparison() {
+    const modal = $('#comparisonModal');
+    if (!modal) return;
+    renderComparison();
+    modal.hidden = false;
+    modal.querySelector('[role="dialog"]')?.focus();
+  }
+
+  function closeFeatureModal(id) {
+    const modal = $(`#${id}`);
+    if (modal) modal.hidden = true;
+  }
+
+  function renderCollectionPicker() {
+    const choices = $('#collectionPickerChoices');
+    if (!choices) return;
+    if (!state.collections.length) {
+      choices.innerHTML = '<p class="empty-state">Create a collection below to get started.</p>';
+      return;
+    }
+    choices.innerHTML = state.collections.map((collection) => `<button class="collection-choice" type="button" data-collection-choice="${escapeAttribute(collection.id)}"><strong>${escapeHtml(collection.name)}</strong><span>${(collection.artworks || []).length} artwork${(collection.artworks || []).length === 1 ? '' : 's'}</span></button>`).join('');
+  }
+
+  function openCollectionPicker(artworkId) {
+    state.pendingCollectionArtworkId = artworkId;
+    renderCollectionPicker();
+    const modal = $('#collectionPickerModal');
+    if (modal) { modal.hidden = false; modal.querySelector('[role="dialog"]')?.focus(); }
+  }
+
+  async function createCollection(name, description = '') {
+    const clean = String(name || '').trim();
+    if (clean.length < 2) throw new Error('Collection names must contain at least two characters.');
+    if (state.collections.length >= 30) throw new Error('You can create up to 30 collections.');
+    const collection = { id: makeId('collection').slice(0, 36), name: clean.slice(0, 100), description: String(description || '').trim().slice(0, 500), artworks: [], createdAt: Date.now(), updatedAt: Date.now() };
+    state.collections.unshift(collection);
+    await persistAppState();
+    if (state.user && !state.user.demo) await syncCollectionState(collection, 'create');
+    renderCollectionsPanel();
+    return state.collections.find((item) => item.id === collection.id) || collection;
+  }
+
+  async function addArtworkToCollection(collectionId, artwork) {
+    if (!artwork) throw new Error('Choose an artwork first.');
+    const collection = state.collections.find((item) => item.id === collectionId);
+    if (!collection) throw new Error('That collection could not be found.');
+    collection.artworks = Array.isArray(collection.artworks) ? collection.artworks : [];
+    if (collection.artworks.some((item) => item.id === artwork.id)) return;
+    if (collection.artworks.length >= 100) throw new Error('A collection can contain up to 100 artworks.');
+    collection.artworks.push(structuredCloneSafe(artwork));
+    collection.updatedAt = Date.now();
+    await persistAppState();
+    if (state.user && !state.user.demo) await syncCollectionState(collection, 'add', artwork);
+    renderCollectionsPanel();
+  }
+
+  async function removeArtworkFromCollection(collectionId, artworkId) {
+    const collection = state.collections.find((item) => item.id === collectionId);
+    if (!collection) return;
+    const artwork = (collection.artworks || []).find((item) => item.id === artworkId);
+    collection.artworks = (collection.artworks || []).filter((item) => item.id !== artworkId);
+    collection.updatedAt = Date.now();
+    await persistAppState();
+    if (state.user && !state.user.demo && artwork) await syncCollectionState(collection, 'remove', artwork);
+    renderCollectionsPanel();
+  }
+
+  async function removeCollection(collectionId) {
+    const collection = state.collections.find((item) => item.id === collectionId);
+    if (!collection) return;
+    state.collections = state.collections.filter((item) => item.id !== collectionId);
+    await persistAppState();
+    if (state.user && !state.user.demo) await syncCollectionState(collection, 'delete');
+    renderCollectionsPanel();
+  }
+
+  function renderCollectionsPanel() {
+    const list = $('#collectionsList');
+    const empty = $('#collectionsEmpty');
+    if (!list) return;
+    if (empty) empty.hidden = state.collections.length > 0;
+    list.innerHTML = state.collections.map((collection) => {
+      const works = Array.isArray(collection.artworks) ? collection.artworks : [];
+      const pricedWorks = works.filter((work) => work.price !== null && work.price !== undefined && Number.isFinite(Number(work.price)));
+      const currencies = [...new Set(pricedWorks.map((work) => String(work.currency || '').toUpperCase()).filter(Boolean))];
+      const allPriced = pricedWorks.length === works.length && works.length > 0;
+      const total = pricedWorks.reduce((sum, work) => sum + Number(work.price), 0);
+      const totalLabel = currencies.length > 1 ? 'Multiple currencies' : allPriced && currencies.length === 1
+        ? `${total.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currencies[0]}`
+        : pricedWorks.length && currencies.length === 1 ? `Known prices: ${total.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currencies[0]}`
+          : 'Prices not available';
+      return `<section class="collection-card" data-collection-id="${escapeAttribute(collection.id)}">
+        <header class="collection-card-header"><div><h3>${escapeHtml(collection.name)}</h3><p>${escapeHtml(collection.description || '')}</p><span>${works.length} artwork${works.length === 1 ? '' : 's'} · ${escapeHtml(totalLabel)}</span></div><button class="text-button danger-text" type="button" data-delete-collection="${escapeAttribute(collection.id)}">Delete collection</button></header>
+        ${works.length ? `<div class="art-grid collection-art-grid">${works.map((work) => renderCard(work, { savedLayout: true, collectionId: collection.id })).join('')}</div>` : '<p class="empty-state">No artworks in this collection yet. Add works from your search results or Saved ArtWorks.</p>'}
+      </section>`;
+    }).join('');
+    bindArtworkImageFallbacks(list);
+  }
+
+  async function createArtworkAlert(id) {
+    const artwork = getArtworkById(id);
+    if (!artwork) throw new Error('Artwork details are no longer available.');
+    if (state.alerts.some((alert) => alert.type === 'artwork' && alert.target?.artwork?.id === id)) return;
+    if (state.alerts.length >= 50) throw new Error('You can follow up to 50 artworks and shops.');
+    const alert = {
+      id: makeId('alert').slice(0, 36), type: 'artwork', active: true,
+      target: { artwork: structuredCloneSafe(artwork), source: artwork.source, seller_name: artwork.seller_name || artwork.source, market_code: artwork.market_code || 'CA' },
+      baseline: { price: artwork.price ?? null, currency: artwork.currency || '', availability: artwork.availability || '', known_ids: [] },
+      events: [], createdAt: Date.now(), lastCheckedAt: null,
+    };
+    state.alerts.unshift(alert);
+    await persistAppState();
+    if (state.user && !state.user.demo) await syncAlertState(alert, 'create');
+    renderAlertsPanel();
+  }
+
+  async function createSellerAlert(name, market, sourceUrl, knownWorks = []) {
+    const seller = String(name || '').trim();
+    if (!seller) return;
+    if (state.alerts.some((alert) => alert.type === 'seller' && alert.target?.seller_name === seller)) return;
+    if (state.alerts.length >= 50) throw new Error('You can follow up to 50 artworks and shops.');
+    const alert = {
+      id: makeId('alert').slice(0, 36), type: 'seller', active: true,
+      target: { seller_name: seller, source: seller, market_code: market || 'CA', source_url: sourceUrl || '' },
+      // Leave the initial set empty: the first successful check establishes the
+      // seller's baseline instead of treating the existing catalogue as new.
+      baseline: { known_ids: [] },
+      events: [], createdAt: Date.now(), lastCheckedAt: null,
+    };
+    state.alerts.unshift(alert);
+    await persistAppState();
+    if (state.user && !state.user.demo) await syncAlertState(alert, 'create');
+    renderAlertsPanel();
+  }
+
+  async function deleteAlert(alertId) {
+    const alert = state.alerts.find((item) => item.id === alertId);
+    state.alerts = state.alerts.filter((item) => item.id !== alertId);
+    await persistAppState();
+    if (state.user && !state.user.demo && alert) await syncAlertState(alert, 'delete');
+    renderAlertsPanel();
+  }
+
+  function renderAlertsPanel() {
+    const list = $('#alertsList');
+    const empty = $('#alertsEmpty');
+    if (!list) return;
+    if (empty) empty.hidden = state.alerts.length > 0;
+    list.innerHTML = state.alerts.map((alert) => {
+      const target = alert.target || {};
+      const work = target.artwork || {};
+      const title = alert.type === 'artwork' ? (work.title || work.artist || 'Artwork') : (target.seller_name || 'Art shop');
+      const detail = alert.type === 'artwork' ? `${work.artist || 'Artist not listed'} · ${target.seller_name || target.source || 'Seller not listed'}` : `${target.market_code === 'US' ? 'United States' : 'Canada'} · New artwork listings`;
+      const events = Array.isArray(alert.events) ? alert.events.slice(0, 5) : [];
+      const latest = alert.lastCheckedAt ? `Last checked ${new Date(Number(alert.lastCheckedAt) * (Number(alert.lastCheckedAt) < 1e12 ? 1000 : 1)).toLocaleString()}` : 'Not checked yet';
+      return `<article class="alert-card"><div class="alert-card-heading"><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(detail)}</span><small>${escapeHtml(latest)}</small></div><button class="text-button danger-text" type="button" data-delete-alert="${escapeAttribute(alert.id)}">Remove alert</button></div>
+        ${alert.checkError ? `<p class="alert-error">${escapeHtml(alert.checkError)}</p>` : ''}
+        ${events.length ? `<ul class="alert-events">${events.map((item) => `<li><span>${escapeHtml(item.message || 'Update found')}</span><small>${escapeHtml(new Date(Number(item.createdAt || Date.now()) * (Number(item.createdAt || 0) < 1e12 ? 1000 : 1)).toLocaleString())}</small></li>`).join('')}</ul>` : '<p class="field-note">No changes detected yet.</p>'}
+      </article>`;
+    }).join('');
+  }
+
+  async function checkArtworkAlerts(button = null) {
+    const message = $('#alertsMessage');
+    const checkButton = button || $('#checkAlertsButton');
+    if (!state.alerts.length) { if (message) message.textContent = 'Follow an artwork or shop first.'; return; }
+    if (checkButton) { checkButton.disabled = true; checkButton.textContent = 'Checking…'; }
+    if (message) message.textContent = 'Checking public shop listings…';
+    try {
+      const data = await accountFetch('/api/account/alerts/check', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alerts: state.user?.demo ? state.alerts : [] }),
+      });
+      if (Array.isArray(data.all_alerts)) {
+        const checksById = new Map((data.alerts || []).map((item) => [item.id, item]));
+        state.alerts = data.all_alerts.map((alert) => ({ ...alert, checkError: checksById.get(alert.id)?.checkError || '' }));
+      } else if (Array.isArray(data.alerts)) {
+        const byId = new Map(data.alerts.map((item) => [item.id, item]));
+        state.alerts = state.alerts.map((alert) => {
+          const checked = byId.get(alert.id);
+          if (!checked) return alert;
+          const updated = { ...alert, baseline: checked.baseline || alert.baseline, lastCheckedAt: checked.lastCheckedAt || Date.now(), checkError: checked.checkError || '' };
+          if (checked.newEvent) updated.events = [{ ...checked.newEvent, createdAt: Date.now(), id: makeId('event'), read: false }, ...(updated.events || [])].slice(0, 30);
+          return updated;
+        });
+      }
+      await persistAppState();
+      const eventCount = Array.isArray(data.alerts) ? data.alerts.filter((alert) => Boolean(alert.newEvent)).length : 0;
+      const failedCount = Array.isArray(data.alerts) ? data.alerts.filter((alert) => Boolean(alert.checkError)).length : 0;
+      if (message) message.textContent = failedCount
+        ? `${failedCount} alert${failedCount === 1 ? '' : 's'} could not be checked. Other checks completed${eventCount ? `; ${eventCount} new update${eventCount === 1 ? '' : 's'} found` : ''}.`
+        : eventCount ? `${eventCount} new update${eventCount === 1 ? '' : 's'} found.` : 'Checks completed. No new changes were detected.';
+    } catch (error) {
+      if (message) message.textContent = error.message || 'Alerts could not be checked right now.';
+    } finally {
+      if (checkButton) { checkButton.disabled = false; checkButton.textContent = 'Check for updates'; }
+      renderAlertsPanel();
+    }
+  }
+
   function renderDashboard() {
     const recent = $('#dashboardRecent');
     const saved = $('#dashboardSaved');
@@ -645,10 +951,14 @@
 
     renderPurchaseHistory();
     renderTastePage();
+    renderCollectionsPanel();
+    renderAlertsPanel();
 
     const dashboardTabs = [
       { name: 'overview', tab: $('#overviewTab'), panel: $('#overviewPanel') },
       { name: 'taste', tab: $('#tasteTab'), panel: $('#tastePanel') },
+      { name: 'collections', tab: $('#collectionsTab'), panel: $('#collectionsPanel') },
+      { name: 'alerts', tab: $('#alertsTab'), panel: $('#alertsPanel') },
       { name: 'purchases', tab: $('#purchasesTab'), panel: $('#purchasesPanel') },
     ].filter((item) => item.tab && item.panel);
     const activateTab = (tabName, moveFocus = false, updateHash = false) => {
@@ -686,7 +996,7 @@
       });
     });
     const hash = window.location.hash.toLowerCase();
-    activateTab(hash === '#taste' ? 'taste' : hash === '#purchases' ? 'purchases' : 'overview');
+    activateTab(hash === '#taste' ? 'taste' : hash === '#collections' ? 'collections' : hash === '#alerts' ? 'alerts' : hash === '#purchases' ? 'purchases' : 'overview');
   }
 
   function renderHome() {
@@ -1143,7 +1453,14 @@
       : '';
     const link = `${checkoutButton}${paypalButton}${invoiceButton}${externalLink}`;
     const saved = state.saved.some((item) => item.id === work.id);
+    const compared = state.compare.some((item) => item.id === work.id);
+    const watched = state.alerts.some((item) => item.type === 'artwork' && item.target?.artwork?.id === work.id);
+    const shopUrlByName = { ArtMatch: 'https://artmatch.ca/canadian-art-for-sale/', 'Rookleys Canadian Art Gallery': 'https://rookleys.com/artworks/', UGallery: 'https://www.ugallery.com/collections/all-artworks', 'Saatchi Art': 'https://www.saatchiart.com/all' };
+    const watchable = work.source_kind === 'commercial' && Boolean(shopUrlByName[work.seller_name || work.source]);
+    const followingSeller = state.alerts.some((item) => item.type === 'seller' && item.target?.seller_name === (work.seller_name || work.source));
     const reasons = (work.why || []).map((item) => String(item)).join(' · ');
+    const collectionRemove = options.collectionId
+      ? `<button class="card-action collection-remove-action" type="button" data-collection-remove="${escapeAttribute(options.collectionId)}" data-id="${id}">Remove from collection</button>` : '';
     return `
       <article class="art-card${savedLayout ? ' saved-art-card' : ''}" data-art-id="${id}">
         <div class="art-image-wrap">${image}</div>
@@ -1157,6 +1474,10 @@
           <div class="art-actions">
             ${link}
             <button class="card-action save-action" type="button" data-id="${id}" aria-pressed="${saved}">${saved ? 'Saved' : 'Save'}</button>
+            <button class="card-action compare-action" type="button" data-compare-id="${id}" aria-pressed="${compared}">${compared ? 'In comparison' : 'Compare'}</button>
+            <button class="card-action add-collection-action" type="button" data-add-to-collection="${id}">Add to collection</button>
+            ${watchable ? `<button class="card-action watch-artwork-action" type="button" data-watch-artwork="${id}" ${watched ? 'disabled' : ''}>${watched ? 'Watching artwork' : 'Watch artwork'}</button><button class="card-action follow-shop-action" type="button" data-follow-seller="${escapeAttribute(work.seller_name || work.source)}" data-market="${escapeAttribute(work.market_code || 'CA')}" data-shop-url="${escapeAttribute(shopUrlByName[work.seller_name || work.source])}" ${followingSeller ? 'disabled' : ''}>${followingSeller ? 'Following seller' : 'Follow seller'}</button>` : ''}
+            ${collectionRemove}
             <button class="card-action feedback-action" type="button" data-id="${id}" data-feedback="More like ${escapeAttribute(work.artist || work.title)}">More like this</button>
             <button class="card-action feedback-action" type="button" data-id="${id}" data-feedback="Not for me: ${escapeAttribute(work.artist || work.title)}">Not for me</button>
           </div>
@@ -1262,7 +1583,8 @@
         if (heading) heading.textContent = market === 'CA'
           ? 'Browse Canadian art shops'
           : market === 'US' ? 'Browse U.S. art shops' : 'Browse Canadian and U.S. art shops';
-        buyShopLinks.innerHTML = shops.map((shop) => `<a class="buy-shop-link" href="${escapeAttribute(shop.url)}" target="_blank" rel="noopener noreferrer"><strong>${escapeHtml(shop.name)}</strong><span>${escapeHtml(shop.description)}</span><span class="buy-shop-action">Browse shop ↗</span></a>`).join('');
+        const shopMarkets = { ArtMatch: 'CA', 'Rookleys Canadian Art Gallery': 'CA', UGallery: 'US', 'Saatchi Art': 'US' };
+        buyShopLinks.innerHTML = shops.map((shop) => `<article class="buy-shop-link"><a href="${escapeAttribute(shop.url)}" target="_blank" rel="noopener noreferrer"><strong>${escapeHtml(shop.name)}</strong><span>${escapeHtml(shop.description)}</span><span class="buy-shop-action">Browse shop ↗</span></a><button class="text-button follow-shop-action" type="button" data-follow-seller="${escapeAttribute(shop.name)}" data-market="${shopMarkets[shop.name] || market}" data-shop-url="${escapeAttribute(shop.url)}">${state.alerts.some((alert) => alert.type === 'seller' && alert.target?.seller_name === shop.name) ? 'Following shop' : 'Notify me about new art'}</button></article>`).join('');
       } else {
         buyShopLinks.innerHTML = '';
       }
@@ -1336,6 +1658,8 @@
     return state.last?.results?.find((work) => work.id === id)
       || state.last?.not_for_sale?.find((work) => work.id === id)
       || state.saved.find((work) => work.id === id)
+      || state.compare.find((work) => work.id === id)
+      || state.collections.flatMap((collection) => collection.artworks || []).find((work) => work.id === id)
       || null;
   }
 
@@ -1634,6 +1958,41 @@
 
   function handleGlobalClicks() {
     document.addEventListener('click', (event) => {
+      const closeModal = event.target.closest('[data-close-modal]');
+      if (closeModal) { closeFeatureModal(closeModal.dataset.closeModal); return; }
+      if (event.target.classList?.contains('modal-backdrop')) { event.target.hidden = true; return; }
+      const compareButton = event.target.closest('[data-compare-id]');
+      if (compareButton) { toggleComparison(compareButton.dataset.compareId); return; }
+      const addCollection = event.target.closest('[data-add-to-collection]');
+      if (addCollection) { openCollectionPicker(addCollection.dataset.addToCollection); return; }
+      const collectionChoice = event.target.closest('[data-collection-choice]');
+      if (collectionChoice) {
+        const work = getArtworkById(state.pendingCollectionArtworkId);
+        addArtworkToCollection(collectionChoice.dataset.collectionChoice, work).then(() => closeFeatureModal('collectionPickerModal')).catch((error) => { const choices = $('#collectionPickerChoices'); if (choices) choices.insertAdjacentHTML('beforeend', `<p class="alert-error">${escapeHtml(error.message)}</p>`); });
+        return;
+      }
+      const removeFromCollection = event.target.closest('[data-collection-remove]');
+      if (removeFromCollection) { removeArtworkFromCollection(removeFromCollection.dataset.collectionRemove, removeFromCollection.dataset.id); return; }
+      const deleteCollectionButton = event.target.closest('[data-delete-collection]');
+      if (deleteCollectionButton) { removeCollection(deleteCollectionButton.dataset.deleteCollection); return; }
+      const watchArtwork = event.target.closest('[data-watch-artwork]');
+      if (watchArtwork) { createArtworkAlert(watchArtwork.dataset.watchArtwork).then(() => { watchArtwork.textContent = 'Watching'; watchArtwork.disabled = true; }).catch((error) => window.alert(error.message)); return; }
+      const followSeller = event.target.closest('[data-follow-seller]');
+      if (followSeller) {
+        const name = followSeller.dataset.followSeller;
+        const known = (state.last?.results || []).filter((work) => (work.seller_name || work.source) === name);
+        createSellerAlert(name, followSeller.dataset.market, followSeller.dataset.shopUrl, known).then(() => { followSeller.textContent = 'Following shop'; followSeller.disabled = true; }).catch((error) => window.alert(error.message));
+        return;
+      }
+      const removeAlert = event.target.closest('[data-delete-alert]');
+      if (removeAlert) { deleteAlert(removeAlert.dataset.deleteAlert); return; }
+      if (event.target.closest('#openComparisonButton')) { openComparison(); return; }
+      if (event.target.closest('#clearComparisonButton') || event.target.closest('#clearComparisonFromModal')) {
+        state.compare = []; persistAppState(); renderCompareDock();
+        if (state.last && window.ART_CONCIERGE_PAGE === 'results') renderResults(state.last);
+        if (window.ART_CONCIERGE_PAGE === 'saved') renderSavedPage();
+        closeFeatureModal('comparisonModal'); return;
+      }
       const purchaseCheck = event.target.closest('[data-purchase-session]');
       if (purchaseCheck) { checkTrackedPurchase(purchaseCheck.dataset.purchaseSession, purchaseCheck, purchaseCheck.dataset.purchaseProvider || 'stripe'); return; }
 
@@ -1721,6 +2080,21 @@
         }
       }
     });
+    $('#collectionPickerCreateForm')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const input = $('#collectionPickerName');
+      try {
+        const collection = await createCollection(input?.value || '');
+        const artwork = getArtworkById(state.pendingCollectionArtworkId);
+        if (artwork) await addArtworkToCollection(collection.id, artwork);
+        form.reset();
+        closeFeatureModal('collectionPickerModal');
+      } catch (error) {
+        const choices = $('#collectionPickerChoices');
+        if (choices) choices.innerHTML = `<p class="alert-error">${escapeHtml(error.message)}</p>${choices.innerHTML}`;
+      }
+    });
   }
 
   function initHome() { renderHome(); }
@@ -1728,6 +2102,18 @@
     renderDashboard();
     initTasteEditor();
     installTasteNavigationGuard();
+    $('#collectionCreateForm')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const name = $('#collectionName')?.value || '';
+      const description = $('#collectionDescription')?.value || '';
+      const message = $('#collectionsMessage');
+      try {
+        await createCollection(name, description);
+        event.currentTarget.reset();
+        if (message) message.textContent = 'Collection created.';
+      } catch (error) { if (message) message.textContent = error.message; }
+    });
+    $('#checkAlertsButton')?.addEventListener('click', (event) => checkArtworkAlerts(event.currentTarget));
   }
 
   async function initConcierge() {
@@ -1994,6 +2380,7 @@
     applyThemeControls();
     setupGlobalControls();
     setActiveNav();
+    renderCompareDock();
     handleGlobalClicks();
 
     switch (window.ART_CONCIERGE_PAGE) {

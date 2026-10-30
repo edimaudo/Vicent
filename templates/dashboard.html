@@ -13,6 +13,8 @@
   <div class="dashboard-tabs" role="tablist" aria-label="Dashboard sections">
     <button class="dashboard-tab is-active" id="overviewTab" type="button" role="tab" aria-selected="true" aria-controls="overviewPanel" tabindex="0">Overview</button>
     <button class="dashboard-tab" id="tasteTab" type="button" role="tab" aria-selected="false" aria-controls="tastePanel" tabindex="-1">Your taste</button>
+    <button class="dashboard-tab" id="collectionsTab" type="button" role="tab" aria-selected="false" aria-controls="collectionsPanel" tabindex="-1">Collections</button>
+    <button class="dashboard-tab" id="alertsTab" type="button" role="tab" aria-selected="false" aria-controls="alertsPanel" tabindex="-1">Alerts</button>
     <button class="dashboard-tab" id="purchasesTab" type="button" role="tab" aria-selected="false" aria-controls="purchasesPanel" tabindex="-1">Purchases</button>
   </div>
 
@@ -92,6 +94,33 @@
       </div>
     </div>
 
+  </section>
+
+  <section class="dashboard-tab-panel" id="collectionsPanel" role="tabpanel" aria-labelledby="collectionsTab" hidden>
+    <header class="taste-panel-header">
+      <div><h2>Your collections</h2><p>Bring artworks together around a room, idea, artist, or personal project.</p></div>
+    </header>
+    <form id="collectionCreateForm" class="collection-create-form collection-create-form--dashboard">
+      <label class="field-label" for="collectionName">Collection name</label>
+      <input id="collectionName" name="name" maxlength="100" placeholder="e.g. Living room" required>
+      <label class="field-label" for="collectionDescription">Description <span class="optional-label">Optional</span></label>
+      <input id="collectionDescription" name="description" maxlength="500" placeholder="What brings these works together?">
+      <button class="primary-button" type="submit">Create collection</button>
+    </form>
+    <p id="collectionsMessage" class="action-message" aria-live="polite"></p>
+    <div id="collectionsList" class="collections-list"></div>
+    <p id="collectionsEmpty" class="empty-state" hidden>You have not created a collection yet.</p>
+  </section>
+
+  <section class="dashboard-tab-panel" id="alertsPanel" role="tabpanel" aria-labelledby="alertsTab" hidden>
+    <header class="taste-panel-header">
+      <div><h2>Artwork and seller alerts</h2><p>Follow individual works for price changes or shops for newly listed artworks.</p></div>
+      <button class="primary-button" id="checkAlertsButton" type="button">Check for updates</button>
+    </header>
+    <p class="field-note">Checks run against the shops’ publicly visible catalogues when you request them. Updates appear here in Vincent.</p>
+    <p id="alertsMessage" class="action-message" aria-live="polite"></p>
+    <div id="alertsList" class="alerts-list"></div>
+    <p id="alertsEmpty" class="empty-state" hidden>You are not following any artworks or shops yet. Use “Watch artwork” or “Follow shop” from a result.</p>
   </section>
 
   <section class="dashboard-tab-panel" id="purchasesPanel" role="tabpanel" aria-labelledby="purchasesTab" hidden>

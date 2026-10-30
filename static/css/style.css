@@ -1788,3 +1788,67 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .buy-shop-link span { color: var(--muted, #606060); font-size: .9rem; line-height: 1.45; }
 .buy-shop-link .buy-shop-action { margin-top: 4px; color: var(--accent, #5144d8); font-weight: 600; }
 @media (max-width: 620px) { .buy-shop-links { grid-template-columns: 1fr; } }
+
+
+/* Collection management, artwork comparison and in-app shop alerts. */
+.dashboard-tabs { overflow-x: auto; scrollbar-width: thin; }
+.dashboard-tab { flex: 0 0 auto; white-space: nowrap; }
+.collection-create-form {
+  display: grid; grid-template-columns: minmax(180px, 1fr) minmax(200px, 1.4fr) auto;
+  gap: 10px 14px; align-items: end; padding: 18px; margin: 18px 0 24px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+}
+.collection-create-form .field-label { grid-column: auto; margin: 0 0 -4px; }
+.collection-create-form input { min-width: 0; width: 100%; }
+.collection-create-form button { min-height: 44px; white-space: nowrap; }
+.collection-create-form--dashboard { grid-template-columns: minmax(180px, .8fr) minmax(200px, 1.3fr) minmax(130px, auto); }
+.collection-create-form--dashboard .field-label:nth-of-type(2) { grid-column: 2; grid-row: 1; }
+.collection-create-form--dashboard input:nth-of-type(2) { grid-column: 2; grid-row: 2; }
+.collection-create-form--dashboard button { grid-column: 3; grid-row: 2; }
+.collections-list { display: grid; gap: 24px; }
+.collection-card { border: 1px solid var(--line); border-radius: 14px; padding: 20px; background: var(--surface); }
+.collection-card-header, .alert-card-heading { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.collection-card-header h3 { margin: 0; font-size: 1.15rem; }
+.collection-card-header p { margin: 6px 0; color: var(--muted); }
+.collection-card-header span, .alert-card-heading span, .alert-card-heading small { display: block; color: var(--muted); font-size: .82rem; margin-top: 5px; }
+.collection-art-grid { margin-top: 18px; }
+.danger-text { color: #a23838 !important; }
+.optional-label { color: var(--muted); font-size: .8em; font-weight: 400; }
+.alerts-list { display: grid; gap: 12px; }
+.alert-card { border: 1px solid var(--line); border-radius: 12px; padding: 17px 18px; background: var(--surface); }
+.alert-events { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+.alert-events li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding-top: 9px; border-top: 1px solid var(--line); }
+.alert-events small { color: var(--muted); font-size: .76rem; }
+.alert-error { color: #a23838 !important; }
+.collection-picker-choices { display: grid; gap: 8px; margin: 14px 0 20px; }
+.collection-choice { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; color: var(--text); background: var(--surface); text-align: left; }
+.collection-choice:hover { border-color: var(--accent); }
+.collection-choice span { color: var(--muted); font-size: .82rem; }
+.collection-picker-dialog .collection-create-form { grid-template-columns: 1fr; margin-bottom: 0; }
+.collection-picker-dialog .collection-create-form .field-label { margin: 0; }
+.collection-picker-dialog .collection-create-form button { width: fit-content; }
+.modal-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.modal-heading-row .icon-button { flex: 0 0 auto; }
+.comparison-dialog { width: min(96vw, 1120px); max-height: 90vh; overflow: auto; }
+.comparison-content { overflow: hidden; }
+.comparison-table-wrap { width: 100%; overflow-x: auto; }
+.comparison-table { width: 100%; min-width: 660px; border-collapse: collapse; font-size: .88rem; }
+.comparison-table th, .comparison-table td { text-align: left; vertical-align: top; padding: 12px; border-bottom: 1px solid var(--line); min-width: 140px; }
+.comparison-table thead th { width: 140px; }
+.comparison-table tbody th { color: var(--muted); font-weight: 600; width: 140px; }
+.comparison-table td { white-space: normal; line-height: 1.5; }
+.comparison-image { display: block; width: 100%; max-width: 190px; aspect-ratio: 4 / 5; object-fit: contain; background: var(--surface-2); margin-bottom: 8px; }
+.comparison-table td strong { display: block; }
+.compare-dock { position: fixed; z-index: 900; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(96vw, 600px); display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 13px; box-shadow: 0 12px 40px rgb(0 0 0 / 20%); }
+.compare-dock[hidden] { display: none !important; }
+.compare-dock span { font-size: .9rem; font-weight: 600; }
+.compare-dock .primary-button { white-space: nowrap; }
+.compare-dock .text-button { white-space: nowrap; }
+.buy-shop-link a { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; color: inherit; text-decoration: none; }
+.buy-shop-link .follow-shop-action { margin-top: 5px; padding: 6px 0; }
+@media (max-width: 760px) {
+  .collection-create-form--dashboard { grid-template-columns: 1fr; }
+  .collection-create-form--dashboard .field-label:nth-of-type(2), .collection-create-form--dashboard input:nth-of-type(2), .collection-create-form--dashboard button { grid-column: auto; grid-row: auto; }
+  .collection-card-header, .alert-card-heading { flex-direction: column; }
+  .compare-dock { flex-wrap: wrap; justify-content: center; bottom: 10px; }
+}

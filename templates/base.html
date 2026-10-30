@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=20261029-us-buy-shops">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261029-collections-comparison-alerts">
 </head>
 <body>
 <div class="app-root">
@@ -55,12 +55,39 @@
     {% block content %}{% endblock %}
   </main>
 </div>
+
+<aside class="compare-dock" id="compareDock" hidden aria-live="polite">
+  <span id="compareDockCount">0 artworks selected</span>
+  <button class="primary-button" id="openComparisonButton" type="button">Compare artworks</button>
+  <button class="text-button" id="clearComparisonButton" type="button">Clear</button>
+</aside>
+
+<div class="modal-backdrop" id="comparisonModal" hidden>
+  <section class="dialog-card comparison-dialog" role="dialog" aria-modal="true" aria-labelledby="comparisonHeading" tabindex="-1">
+    <div class="modal-heading-row"><h2 id="comparisonHeading">Compare artworks</h2><button class="icon-button" type="button" data-close-modal="comparisonModal" aria-label="Close comparison">×</button></div>
+    <div id="comparisonContent" class="comparison-content"></div>
+    <div class="dialog-actions"><button class="secondary-button" type="button" data-close-modal="comparisonModal">Close</button><button class="text-button" id="clearComparisonFromModal" type="button">Clear selection</button></div>
+  </section>
+</div>
+
+<div class="modal-backdrop" id="collectionPickerModal" hidden>
+  <section class="dialog-card collection-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="collectionPickerHeading" tabindex="-1">
+    <div class="modal-heading-row"><h2 id="collectionPickerHeading">Add to a collection</h2><button class="icon-button" type="button" data-close-modal="collectionPickerModal" aria-label="Close collections">×</button></div>
+    <div id="collectionPickerChoices" class="collection-picker-choices"></div>
+    <form id="collectionPickerCreateForm" class="collection-create-form">
+      <label class="field-label" for="collectionPickerName">Create a new collection</label>
+      <input id="collectionPickerName" name="name" maxlength="100" placeholder="e.g. Living room" required>
+      <button class="primary-button" type="submit">Create and add artwork</button>
+    </form>
+  </section>
+</div>
+
 <script>
   window.ART_CONCIERGE_PAGE = "{{ page }}";
   window.ART_AUTH_MODE = "{{ auth_mode|default('') }}";
   window.ART_AUTH_NEXT = {{ next_url|default('/concierge')|tojson }};
 </script>
-<script src="/static/js/app.js?v=20261029-us-buy-shops"></script>
+<script src="/static/js/app.js?v=20261029-collections-comparison-alerts"></script>
 {% block page_script %}{% endblock %}
 </body>
 </html>

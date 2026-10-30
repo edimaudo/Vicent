@@ -25,6 +25,7 @@ from fastapi.templating import Jinja2Templates
 
 from models.schemas import ConciergeRequest, ExistingArtworkReference
 from services.concierge import run
+from services.art_sources import commercial_providers
 from services.payments import PaymentUnavailable, PaymentConfigurationError, CheckoutSessionNotFound, create_checkout_session, retrieve_checkout_session, parse_webhook, verify_webhook_signature
 from services.image_proxy import display_image_url, is_allowed_detail_url, is_allowed_image_url
 from services.config import REQUEST_TIMEOUT
@@ -34,6 +35,8 @@ from services.database import (
     register_user, authenticate_user, create_session, get_user_for_session, delete_session,
     get_profile, save_profile, list_saved_artworks, save_artwork, remove_saved_artwork,
     save_recent_search, list_recent_searches, save_order, list_orders, get_order_for_user,
+    list_collections, create_collection, delete_collection, add_collection_artwork, remove_collection_artwork,
+    list_artwork_alerts, create_artwork_alert, delete_artwork_alert, update_artwork_alert_check, mark_artwork_alert_events_read,
 )
 from services.paypal_payments import (
     PayPalConfigurationError, PayPalUnavailable, paypal_enabled, invoice_enabled,
@@ -477,12 +480,14 @@ async def account_state(request: Request) -> JSONResponse:
         demo_purchases = [_order_client_record(item) for item in _demo_paypal_orders_for_user(request, user["id"])]
         return JSONResponse({"success": True, "user": user, "profile": None,
                              "profile_updated_at": None, "saved": [], "recent": [], "purchases": demo_purchases,
-                             "demo_mode": True})
+                             "collections": [], "alerts": [], "demo_mode": True})
     try:
         profile_data = get_profile(user["id"])
         saved = list_saved_artworks(user["id"])
         recent = list_recent_searches(user["id"])
         orders = [_order_client_record(order) for order in list_orders(user["id"])]
+        collections = list_collections(user["id"])
+        alerts = list_artwork_alerts(user["id"])
     except DatabaseUnavailable as exc:
         return JSONResponse({"success": False, "detail": str(exc)}, status_code=503)
     recent_data = [{
@@ -493,7 +498,231 @@ async def account_state(request: Request) -> JSONResponse:
     } for item in recent]
     return JSONResponse({"success": True, "user": user, "profile": profile_data.get("profile"),
                          "profile_updated_at": profile_data.get("updated_at"),
-                         "saved": saved, "recent": recent_data, "purchases": orders})
+                         "saved": saved, "recent": recent_data, "purchases": orders,
+                         "collections": collections, "alerts": alerts})
+
+
+_ALERT_LIMIT = 20
+
+
+def _alert_artwork_payload(work: Any) -> dict[str, Any]:
+    return {key: getattr(work, key, None) for key in (
+        "id", "title", "artist", "image_url", "detail_url", "source", "source_kind",
+        "availability", "price", "currency", "medium", "dimensions", "year",
+        "description", "seller_name", "market_code",
+    )}
+
+
+def _alert_provider_map() -> dict[str, Any]:
+    return {provider.name: provider for provider in commercial_providers()}
+
+
+async def _check_one_artwork_alert(alert: dict[str, Any]) -> dict[str, Any]:
+    alert = dict(alert)
+    target = alert.get("target") if isinstance(alert.get("target"), dict) else {}
+    baseline = alert.get("baseline") if isinstance(alert.get("baseline"), dict) else {}
+    alert_type = str(alert.get("type") or "")
+    provider_name = str(target.get("seller_name") or target.get("source") or "").strip()
+    provider = _alert_provider_map().get(provider_name)
+    if alert_type not in {"artwork", "seller"} or provider is None:
+        alert["checkError"] = "This shop is no longer supported for alerts."
+        return alert
+    artwork = target.get("artwork") if isinstance(target.get("artwork"), dict) else {}
+    query = "" if alert_type == "seller" else " ".join(str(artwork.get(key) or "") for key in ("title", "artist")).strip()
+    try:
+        works = await provider.search(query, limit=16)
+    except Exception as exc:
+        logger.warning("Artwork alert retrieval failed for %s (%s)", provider_name, type(exc).__name__)
+        alert["checkError"] = "Could not retrieve this shop's public listings. Try again later."
+        return alert
+
+    now = time.time()
+    alert["lastCheckedAt"] = now
+    alert.pop("checkError", None)
+    event = None
+    if alert_type == "artwork":
+        wanted_url = str(artwork.get("detail_url") or "").rstrip("/").casefold()
+        wanted_title = str(artwork.get("title") or "").strip().casefold()
+        wanted_artist = str(artwork.get("artist") or "").strip().casefold()
+        match = next((work for work in works if (
+            wanted_url and str(work.detail_url or "").rstrip("/").casefold() == wanted_url
+        ) or (wanted_title and str(work.title or "").strip().casefold() == wanted_title
+              and (not wanted_artist or str(work.artist or "").strip().casefold() == wanted_artist))), None)
+        if match:
+            previous_price = baseline.get("price")
+            current_price = match.price
+            previous_currency = str(baseline.get("currency") or artwork.get("currency") or "").upper()
+            current_currency = str(match.currency or "").upper()
+            if previous_price is not None and current_price is not None and (
+                abs(float(previous_price) - float(current_price)) >= 0.01 or previous_currency != current_currency
+            ):
+                old_label = f"{previous_currency} {float(previous_price):,.2f}"
+                new_label = f"{current_currency} {float(current_price):,.2f}"
+                event = {"type": "price_change", "message": f"{match.title} changed from {old_label} to {new_label}.",
+                         "data": {"artwork": _alert_artwork_payload(match)}}
+            baseline.update({"price": current_price, "currency": current_currency,
+                             "availability": match.availability, "last_work": _alert_artwork_payload(match)})
+        # A missing result is not proof that a work sold. Do not send false sold-out alerts.
+    else:
+        known_ids = set(str(item) for item in baseline.get("known_ids", []) if item)
+        # The first successful check establishes a baseline; it should not notify
+        # users that every existing catalogue item is a newly listed work.
+        if not known_ids:
+            baseline["known_ids"] = [work.id for work in works][-200:]
+            baseline["baseline_initialized"] = True
+        else:
+            new_works = [work for work in works if work.id not in known_ids]
+            baseline["known_ids"] = list(dict.fromkeys([*known_ids, *[work.id for work in works]]))[-200:]
+            if new_works:
+                event = {"type": "new_listings", "message": f"{len(new_works)} new listing{'s' if len(new_works) != 1 else ''} found at {provider_name}.",
+                         "data": {"artworks": [_alert_artwork_payload(work) for work in new_works[:8]]}}
+    alert["baseline"] = baseline
+    alert["newEvent"] = event
+    return alert
+
+
+@app.post("/api/account/collections")
+async def account_create_collection(payload: dict[str, Any], request: Request) -> JSONResponse:
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Sign in to manage your collections."}, status_code=401)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "demo_mode": True})
+    try:
+        create_collection(user["id"], str(payload.get("id") or secrets.token_hex(16)),
+                          str(payload.get("name") or ""), str(payload.get("description") or ""))
+        return JSONResponse({"success": True, "collections": list_collections(user["id"])})
+    except (DatabaseUnavailable, ValueError, PermissionError) as exc:
+        status = 503 if isinstance(exc, DatabaseUnavailable) else 422
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=status)
+
+
+@app.delete("/api/account/collections/{collection_id}")
+async def account_delete_collection(collection_id: str, request: Request) -> JSONResponse:
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Sign in to manage your collections."}, status_code=401)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "demo_mode": True})
+    try:
+        delete_collection(user["id"], collection_id)
+        return JSONResponse({"success": True, "collections": list_collections(user["id"])})
+    except DatabaseUnavailable as exc:
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=503)
+
+
+@app.post("/api/account/collections/{collection_id}/items")
+async def account_add_collection_item(collection_id: str, payload: dict[str, Any], request: Request) -> JSONResponse:
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Sign in to manage your collections."}, status_code=401)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "demo_mode": True})
+    artwork = payload.get("artwork")
+    if not isinstance(artwork, dict):
+        return JSONResponse({"success": False, "detail": "Artwork details are required."}, status_code=422)
+    try:
+        add_collection_artwork(user["id"], collection_id, artwork)
+        return JSONResponse({"success": True, "collections": list_collections(user["id"])})
+    except (DatabaseUnavailable, ValueError, LookupError) as exc:
+        status = 503 if isinstance(exc, DatabaseUnavailable) else 404 if isinstance(exc, LookupError) else 422
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=status)
+
+
+@app.delete("/api/account/collections/{collection_id}/items/{artwork_id}")
+async def account_remove_collection_item(collection_id: str, artwork_id: str, request: Request) -> JSONResponse:
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Sign in to manage your collections."}, status_code=401)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "demo_mode": True})
+    try:
+        remove_collection_artwork(user["id"], collection_id, artwork_id)
+        return JSONResponse({"success": True, "collections": list_collections(user["id"])})
+    except DatabaseUnavailable as exc:
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=503)
+
+
+@app.post("/api/account/alerts")
+async def account_create_alert(payload: dict[str, Any], request: Request) -> JSONResponse:
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Sign in to create artwork and seller alerts."}, status_code=401)
+    alert_type = str(payload.get("type") or "")
+    target = payload.get("target") if isinstance(payload.get("target"), dict) else {}
+    baseline = payload.get("baseline") if isinstance(payload.get("baseline"), dict) else {}
+    if not target:
+        return JSONResponse({"success": False, "detail": "Alert details are required."}, status_code=422)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "demo_mode": True})
+    try:
+        if alert_type == "seller" and not baseline.get("known_ids"):
+            provider = _alert_provider_map().get(str(target.get("seller_name") or target.get("source") or ""))
+            if provider:
+                try:
+                    existing_works = await provider.search("", limit=16)
+                    baseline["known_ids"] = [work.id for work in existing_works][-200:]
+                    baseline["baseline_initialized"] = True
+                except Exception as exc:
+                    logger.info("Seller alert baseline will be initialized on first check (%s)", type(exc).__name__)
+        create_artwork_alert(user["id"], str(payload.get("id") or secrets.token_hex(16)), alert_type, target, baseline)
+        return JSONResponse({"success": True, "alerts": list_artwork_alerts(user["id"])})
+    except (DatabaseUnavailable, ValueError, PermissionError) as exc:
+        status = 503 if isinstance(exc, DatabaseUnavailable) else 422
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=status)
+
+
+@app.delete("/api/account/alerts/{alert_id}")
+async def account_delete_alert(alert_id: str, request: Request) -> JSONResponse:
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Sign in to manage alerts."}, status_code=401)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "demo_mode": True})
+    try:
+        delete_artwork_alert(user["id"], alert_id)
+        return JSONResponse({"success": True, "alerts": list_artwork_alerts(user["id"])})
+    except DatabaseUnavailable as exc:
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=503)
+
+
+@app.post("/api/account/alerts/read")
+async def account_mark_alerts_read(request: Request) -> JSONResponse:
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Sign in to manage alerts."}, status_code=401)
+    if _is_demo_user(user):
+        return JSONResponse({"success": True, "demo_mode": True})
+    try:
+        mark_artwork_alert_events_read(user["id"])
+        return JSONResponse({"success": True})
+    except DatabaseUnavailable as exc:
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=503)
+
+
+@app.post("/api/account/alerts/check")
+async def account_check_alerts(payload: dict[str, Any], request: Request) -> JSONResponse:
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Sign in to check alerts."}, status_code=401)
+    try:
+        if _is_demo_user(user):
+            alerts = payload.get("alerts") if isinstance(payload.get("alerts"), list) else []
+            checked = []
+            for alert in alerts[:_ALERT_LIMIT]:
+                if isinstance(alert, dict) and alert.get("active", True):
+                    checked.append(await _check_one_artwork_alert(alert))
+            return JSONResponse({"success": True, "alerts": checked, "demo_mode": True})
+        alerts = [item for item in list_artwork_alerts(user["id"]) if item.get("active")][:_ALERT_LIMIT]
+        checked = []
+        for alert in alerts:
+            result = await _check_one_artwork_alert(alert)
+            if not result.get("checkError"):
+                update_artwork_alert_check(user["id"], alert["id"], result.get("baseline") or {}, result.get("newEvent"))
+            checked.append(result)
+        return JSONResponse({"success": True, "alerts": checked, "all_alerts": list_artwork_alerts(user["id"])})
+    except DatabaseUnavailable as exc:
+        return JSONResponse({"success": False, "detail": str(exc)}, status_code=503)
 
 
 @app.put("/api/account/profile")
@@ -542,6 +771,8 @@ async def account_orders(request: Request) -> JSONResponse:
         return JSONResponse({"success": True, "orders": demo_orders, "demo_mode": True})
     try:
         orders = [_order_client_record(order) for order in list_orders(user["id"])]
+        collections = list_collections(user["id"])
+        alerts = list_artwork_alerts(user["id"])
     except DatabaseUnavailable as exc:
         return JSONResponse({"success": False, "detail": str(exc)}, status_code=503)
     return JSONResponse({"success": True, "orders": orders})

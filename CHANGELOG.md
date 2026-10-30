@@ -394,3 +394,14 @@
 - The Buy shop panel now follows the Concierge region: Canada shows ArtMatch and Rookleys, United States shows UGallery and Saatchi Art, and Both shows all four.
 - U.S. marketplace prices marked with `$` are interpreted as USD; source results are labelled as public listings and buyers must reconfirm seller-side price, availability, shipping, and currency.
 - Updated Buy summaries, diagnostics, docs, and regression tests to cover region-aware marketplace selection.
+
+
+## 29 October 2026 — Collections, artwork comparison, and alerts
+
+- Added named artwork collections with create, add, remove, and delete workflows. Registered accounts persist collections in PostgreSQL; the James demo account persists them in browser IndexedDB.
+- Added side-by-side comparison for two or three artworks, including artist, asking price/currency, medium, dimensions, year, seller/source, availability, description, and seller listing link. Comparison selections persist locally across Vincent pages.
+- Added Watch artwork and Follow seller actions for the supported commercial shops. Artwork alerts detect observed price changes; seller alerts detect new public catalogue listings against a baseline. Missing listings are not treated as sold.
+- Added Dashboard → Collections and Dashboard → Alerts panels with in-app event history and a user-triggered Check for updates action. No background schedule or email notification service was added.
+- Kept structured search filters in the user's Concierge prompt; no separate filter form was introduced.
+- Kept the existing Buy flow for third-party gallery checkout hand-offs. PayPal Sandbox supports tracking details on captured PayPal transactions, but it cannot expose transactions completed through external sellers' own checkout accounts. Shipment details must be supplied by the seller.
+- Added database tables for collections, collection items, artwork alerts, and alert events. Existing databases initialize the new tables through the existing SQLAlchemy metadata initialization.

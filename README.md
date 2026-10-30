@@ -1,6 +1,6 @@
 # Vincent | Art Concierge
 
-> **Build update — 28 October 2026**
+> **Build update — 29 October 2026**
 > Signed-out visitors are redirected to sign-in before accessing Dashboard, Concierge, Saved ArtWorks, results, or taste settings. Signing in from the landing page opens Concierge, and the demo profile is named James. PayPal Sandbox uses Vercel credentials plus a built-in CAD $1.00 test checkout; no PayPal catalog variable is required. See `CHANGELOG.md` for details.
 
 A user-centric art concierge that combines broader cultural taste signals from Qloo with artwork research across commercial and institutional sources.
@@ -51,13 +51,26 @@ The Qloo implementation does not use the unsupported `/recommendations` or `/rec
 
 Vincent's default Buy search uses public Canadian and U.S. shop catalogues, with no paid partner API keys or private gallery feeds. Canada searches **ArtMatch** and **Rookleys Canadian Art Gallery**; United States searches **UGallery** and **Saatchi Art**. Links open the seller's own checkout, and prices and availability must be reconfirmed with the seller.
 
-### Account and purchasing
+### Collection management and artwork comparison
+
+- Users can create up to 30 named collections, each holding up to 100 artworks. Add works from recommendation cards or Saved ArtWorks, remove individual works, and delete collections. Collection contents are persisted with registered accounts in the database and locally in IndexedDB for the James demo account.
+- Users can select two or three artworks and compare artist, asking price/currency, medium, dimensions, year, seller/source, availability, description, and the original seller listing. Comparison selections are browser-local and are not a separate saved collection.
+- Collection totals are shown only when the listed currencies can be combined meaningfully. Mixed-currency collections are labelled rather than incorrectly summed.
+
+## Artwork and seller alerts
+
+- Users can watch an individual commercial artwork for a detected listing price change, or follow one of the four public shops (ArtMatch, Rookleys Canadian Art Gallery, UGallery, or Saatchi Art) for new listings.
+- Alert checks are user-triggered from Dashboard → Alerts and query the shop's publicly visible catalogue. The first successful seller check establishes the baseline; it does not alert on the shop's existing catalogue. A missing artwork result is not treated as proof that the work sold.
+- Updates are shown in Vincent's in-app Alerts panel. This MVP does not send email/push notifications or run scheduled background checks. It does not claim a shop has shipped an item based on a listing update.
+- Demo collections and alerts are stored locally in the current browser. Registered-account collections and alerts are stored in PostgreSQL through `DATABASE_URL`.
+
+## Account and purchasing
 
 Email/password accounts use server-side sessions with an HttpOnly cookie. For an MVP walkthrough, the sign-in page pre-fills a demo account (`demo@vincent.art` / `vincent-demo-2026` by default, with the display name James), which works without a database. Demo profile edits and saved artwork remain in the current browser; they are not private or shared across devices. Configure `DATABASE_URL` for persistent registered accounts, profiles, saved artworks, recent requests, and order history. For production use, configure managed PostgreSQL through `DATABASE_URL`; local SQLite is supported for tests only. Passwords for registered accounts are stored as scrypt hashes. Configure `VINCENT_DEMO_EMAIL`, `VINCENT_DEMO_PASSWORD`, and a strong `VINCENT_DEMO_SESSION_SECRET` before deploying a demo-enabled instance; the signing key is generated per process when the secret is omitted.
 
 Purchasing supports seller redirection, Stripe Checkout catalog entries, and PayPal Orders v2 plus PayPal invoicing. PayPal's REST calls run server-side: the default mode is `sandbox`, with API base `https://api-m.sandbox.paypal.com`; the hosted buyer approval page is on `sandbox.paypal.com`. Configure `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE=sandbox`, `PAYPAL_REGION=CA`, and `PAYPAL_LOCALE=en-CA` in Vercel. Never put the client secret in browser code. The sandbox buyer email/password are used manually on PayPal's hosted approval page and must not be stored in Vercel or sent to Vincent. Set `VINCENT_BASE_URL` to the public HTTPS Vercel deployment URL so PayPal returns to the correct app.
 
-Seller listings use their own checkout by default. PayPal credentials alone enable the connection; no custom catalogue variable is required. When `PAYPAL_MODE=sandbox` and credentials are configured, the Dashboard → Purchases section exposes a fixed CAD $1.00 Sandbox test checkout. This lets you verify order creation, PayPal buyer approval, capture, and payment-status reporting without charging for a third-party artwork. Real artwork payments remain disabled unless seller authorization, approved fixed pricing, and fulfilment responsibilities are deliberately configured in server code. The demo account can complete a Sandbox test without a database; short-lived signed HttpOnly cookies bind demo orders to the signed-in session, while registered-user order history requires `DATABASE_URL`. PayPal invoice buttons remain disabled until persistent order storage is configured. Optional PayPal invoices also require `PAYPAL_INVOICE_EMAIL`, which is the merchant/invoicer email, not the Sandbox buyer login. Live transactions require deliberate production credentials and seller agreements.
+Seller listings use their own checkout by default. PayPal credentials alone enable the connection; no custom catalogue variable is required. PayPal's Sandbox does expose shipment-tracking endpoints for captured Orders v2 transactions, but those require Vincent to own the PayPal transaction and the seller to provide shipment details. The current Buy flow redirects to third-party seller checkout, so those seller-owned orders are not visible to Vincent's PayPal account; external purchase tracking is therefore unchanged and is not inferred from the redirect. When `PAYPAL_MODE=sandbox` and credentials are configured, the Dashboard → Purchases section exposes a fixed CAD $1.00 Sandbox test checkout. This lets you verify order creation, PayPal buyer approval, capture, and payment-status reporting without charging for a third-party artwork. Real artwork payments remain disabled unless seller authorization, approved fixed pricing, and fulfilment responsibilities are deliberately configured in server code. The demo account can complete a Sandbox test without a database; short-lived signed HttpOnly cookies bind demo orders to the signed-in session, while registered-user order history requires `DATABASE_URL`. PayPal invoice buttons remain disabled until persistent order storage is configured. Optional PayPal invoices also require `PAYPAL_INVOICE_EMAIL`, which is the merchant/invoicer email, not the Sandbox buyer login. Live transactions require deliberate production credentials and seller agreements.
 
 
 #### Vercel Sandbox checklist
