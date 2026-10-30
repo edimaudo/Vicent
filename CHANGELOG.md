@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-30 — Dashboard collections, artwork comparison, and Explore corrections
+
+- Removed the two redundant Sandbox explanatory notices from Dashboard → Purchases. Kept the PayPal Sandbox test action labelled **$1.00 CAD**.
+- Reworked Dashboard → Collections to display collections created through Concierge. Curate a collection results now provide a **Save collection** action; individual artwork cards can still be added to a named collection through the Concierge collection picker. Removed the separate Dashboard collection-creation form.
+- Added a dedicated Dashboard → **Artwork comparison** tab. Users select two or three works using **Compare** on Concierge or Saved ArtWorks cards, then view the side-by-side comparison in the Dashboard tab.
+- Corrected the Explore query normalizer for common misspellings such as “van gough” and “van gog”, resolving them to **Vincent van Gogh** and removing the conversational wrapper before provider search.
+- Corrected Explore/Find regional source selection: North American museum collections remain available when Canada is selected, while commercial shop searches continue to follow the Canada / United States / Both selector. Purchase-oriented modes remain commercial-only.
+- Confirmed PayPal Sandbox supports shipment-tracking requests for captured Orders v2 transactions. The existing Buy flow remains unchanged because purchases on third-party gallery checkout pages are seller-owned; Vincent does not receive those sellers' PayPal order/capture IDs or shipment details.
+
+### Verification
+
+- `pytest -q` — 156 passed.
+- `node --check static/js/app.js` — passed.
+- `python -m compileall -q .` — passed.
+- Local route smoke checks and ZIP integrity check — passed.
+- Live public-source retrieval and live PayPal Sandbox transactions are not claimed by these automated tests.
+
 ## 2026-10-29 — Canadian Buy inventory correction
 
 - Restricted the active Buy inventory registry to public Canadian shop pages from ArtMatch and Rookleys; removed the Artsy, Artlogic-feed, and Collect24 API-backed provider integrations and their environment-variable setup.

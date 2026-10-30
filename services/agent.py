@@ -399,13 +399,30 @@ async def _research(
         *fallback,
     ]))
     search_directions = [item.strip() for item in proposed if item and item.strip()][:4]
+    # A named artist request should be sent to every selected North American
+    # collection source as the primary query. Rotating the artist query to only
+    # one provider can otherwise return unrelated generic records or no match.
+    artist_focus = _searchable_goal(request)
+    if request.intent.value in {"discover", "find"} and re.search(r"\bvincent\s+van\s+gogh\b", artist_focus, flags=re.I):
+        search_directions = [artist_focus]
     if not search_directions:
         search_directions = ["contemporary art"]
 
     works: list[Artwork] = []
     region_scope = request.region_scope if request.region_scope in {"CA", "US", "BOTH"} else "CA"
+    institutional_set = set(institutional)
     all_providers = list(dict.fromkeys(provider for group in provider_groups for provider in group))
-    all_providers = [provider for provider in all_providers if _provider_in_region(provider, region_scope)]
+    # Region scope selects commercial shops. For Explore and Find, keep North
+    # American museum collections available as discovery sources regardless of
+    # whether the user selected Canada or the US; these are not seller locations.
+    if request.intent.value in {"discover", "find"} and not _requires_purchasable_inventory(request):
+        all_providers = [
+            provider for provider in all_providers
+            if (provider in institutional_set and _provider_market_codes(provider) & {"CA", "US"})
+            or (provider not in institutional_set and _provider_in_region(provider, region_scope))
+        ]
+    else:
+        all_providers = [provider for provider in all_providers if _provider_in_region(provider, region_scope)]
     source_stats: dict[str, dict[str, Any]] = {}
     enabled_providers = []
     for provider in all_providers:
@@ -436,7 +453,12 @@ async def _research(
                 if error not in stat["errors"]:
                     stat["errors"].append(error)
             else:
-                batch = [work for work in batch if _work_in_region(work, region_scope)]
+                batch = [
+                    work for work in batch
+                    if (work.source_kind == "institution" and request.intent.value in {"discover", "find"}
+                        and work.market_code in {"CA", "US"})
+                    or _work_in_region(work, region_scope)
+                ]
                 stat["results_found"] += len(batch)
                 stat["images_found"] += sum(1 for work in batch if _has_image_candidate(work))
                 works.extend(batch)
@@ -614,10 +636,30 @@ _GENERIC_SERVICE_PROMPTS = {
 
 
 def _searchable_goal(request: ConciergeRequest) -> str:
-    """Exclude service labels so they do not masquerade as artwork search terms."""
+    """Turn conversational prompts and common artist misspellings into catalogue queries."""
     goal = (request.goal or "").strip()
+    if not goal:
+        return ""
+    # Correct the common voice/text typo "Van Gough" before the provider query
+    # and ranking stages. Preserve any remaining descriptive terms after the name.
+    artist_alias = re.search(r"\b(?:vincent\s+)?van\s+(?:gough|goh|gog)\b", goal, flags=re.I)
+    if artist_alias:
+        goal = goal[:artist_alias.start()] + "Vincent van Gogh" + goal[artist_alias.end():]
+        goal = re.sub(
+            r"^(?:please\s+)?(?:show|find|search for|look for)\s+(?:me\s+)?(?:some\s+)?art(?:work|works)?\s+(?:related to|by|from|of|about)\s+",
+            "", goal, flags=re.I,
+        ).strip(" .,!?:;")
+        goal = re.sub(r"^Vincent van Gogh(?:['’]s)?[.!?]*$", "Vincent van Gogh", goal, flags=re.I)
+        return goal[:140]
     normalized = re.sub(r"[^a-z0-9]+", " ", goal.casefold()).strip()
-    return "" if normalized in _GENERIC_SERVICE_PROMPTS else goal[:140]
+    if normalized in _GENERIC_SERVICE_PROMPTS:
+        return ""
+    # Remove common conversational wrappers while retaining the user's actual topic.
+    goal = re.sub(
+        r"^(?:please\s+)?(?:show|find|search for|look for)\s+(?:me\s+)?(?:some\s+)?art(?:work|works)?\s+(?:related to|about|in the style of|by|from)\s+",
+        "", goal, flags=re.I,
+    ).strip(" .,!?:;")
+    return goal[:140]
 
 
 def _fast_search_directions(request: ConciergeRequest) -> list[str]:

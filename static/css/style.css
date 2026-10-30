@@ -1852,3 +1852,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   .collection-card-header, .alert-card-heading { flex-direction: column; }
   .compare-dock { flex-wrap: wrap; justify-content: center; bottom: 10px; }
 }
+
+/* Dashboard comparison and Concierge-curated collection handoff. */
+.comparison-dashboard-panel .comparison-content { margin-top: 18px; }
+.comparison-dashboard-panel .comparison-find-link { display: inline-flex; margin-top: 16px; }
+.comparison-remove { display: block; margin-top: 8px; }
+.curated-collection-save { padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.curated-collection-save-form { display: grid; grid-template-columns: minmax(220px, 1fr) auto; align-items: end; gap: 10px 14px; max-width: 760px; }
+.curated-collection-save-form .field-label { grid-column: 1 / -1; margin: 0 0 -4px; }
+.curated-collection-save-form input { min-width: 0; width: 100%; }
+.curated-collection-save-form button { min-height: 44px; white-space: nowrap; }
+@media (max-width: 620px) { .curated-collection-save-form { grid-template-columns: 1fr; } }

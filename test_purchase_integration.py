@@ -554,7 +554,9 @@ def test_payments_section_is_the_only_general_ui_section_that_announces_sandbox_
     from test_helpers import sign_in_demo
     sign_in_demo(client)
     dashboard = client.get('/dashboard').text
-    assert 'Sandbox mode is selected; transactions are test-only.' in dashboard
+    assert 'PayPal Sandbox test · $1.00 CAD' not in dashboard
+    assert 'Sandbox mode is selected; transactions are test-only.' not in dashboard
+    assert 'Use this one-dollar test transaction' not in dashboard
     assert 'PayPal and Stripe payments, invoices' not in dashboard
     concierge = client.get('/concierge').text
     assert 'PayPal' not in concierge

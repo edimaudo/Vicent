@@ -13,6 +13,7 @@
   <div class="dashboard-tabs" role="tablist" aria-label="Dashboard sections">
     <button class="dashboard-tab is-active" id="overviewTab" type="button" role="tab" aria-selected="true" aria-controls="overviewPanel" tabindex="0">Overview</button>
     <button class="dashboard-tab" id="tasteTab" type="button" role="tab" aria-selected="false" aria-controls="tastePanel" tabindex="-1">Your taste</button>
+    <button class="dashboard-tab" id="compareTab" type="button" role="tab" aria-selected="false" aria-controls="comparePanel" tabindex="-1">Artwork comparison</button>
     <button class="dashboard-tab" id="collectionsTab" type="button" role="tab" aria-selected="false" aria-controls="collectionsPanel" tabindex="-1">Collections</button>
     <button class="dashboard-tab" id="alertsTab" type="button" role="tab" aria-selected="false" aria-controls="alertsPanel" tabindex="-1">Alerts</button>
     <button class="dashboard-tab" id="purchasesTab" type="button" role="tab" aria-selected="false" aria-controls="purchasesPanel" tabindex="-1">Purchases</button>
@@ -96,20 +97,23 @@
 
   </section>
 
+  <section class="dashboard-tab-panel comparison-dashboard-panel" id="comparePanel" role="tabpanel" aria-labelledby="compareTab" hidden>
+    <header class="taste-panel-header">
+      <div><h2>Compare artworks</h2><p>Compare two or three works you selected from Concierge or Saved ArtWorks.</p></div>
+      <button class="text-button danger-text" id="dashboardClearComparison" type="button" hidden>Clear comparison</button>
+    </header>
+    <div id="dashboardComparisonContent" class="comparison-content"></div>
+    <p id="dashboardComparisonEmpty" class="empty-state">No artworks selected yet. Open an artwork in Concierge or Saved ArtWorks and select Compare.</p>
+    <a class="secondary-button comparison-find-link" href="/concierge">Find artworks to compare</a>
+  </section>
+
   <section class="dashboard-tab-panel" id="collectionsPanel" role="tabpanel" aria-labelledby="collectionsTab" hidden>
     <header class="taste-panel-header">
-      <div><h2>Your collections</h2><p>Bring artworks together around a room, idea, artist, or personal project.</p></div>
+      <div><h2>Your curated collections</h2><p>Collections you created using <strong>Curate a collection</strong> in your Concierge. Open a curated result and save the set to keep it here.</p></div>
+      <a class="secondary-button" href="/concierge?intent=curate">Curate a collection <span aria-hidden="true">→</span></a>
     </header>
-    <form id="collectionCreateForm" class="collection-create-form collection-create-form--dashboard">
-      <label class="field-label" for="collectionName">Collection name</label>
-      <input id="collectionName" name="name" maxlength="100" placeholder="e.g. Living room" required>
-      <label class="field-label" for="collectionDescription">Description <span class="optional-label">Optional</span></label>
-      <input id="collectionDescription" name="description" maxlength="500" placeholder="What brings these works together?">
-      <button class="primary-button" type="submit">Create collection</button>
-    </form>
-    <p id="collectionsMessage" class="action-message" aria-live="polite"></p>
     <div id="collectionsList" class="collections-list"></div>
-    <p id="collectionsEmpty" class="empty-state" hidden>You have not created a collection yet.</p>
+    <div id="collectionsEmpty" class="empty-state" hidden>Your curated collections will appear here after you save a set of artworks from Concierge.</div>
   </section>
 
   <section class="dashboard-tab-panel" id="alertsPanel" role="tabpanel" aria-labelledby="alertsTab" hidden>
@@ -128,16 +132,14 @@
       <div>
         <h2>Purchases and orders</h2>
         <p>Payments, invoices, and seller checkout hand-offs linked to your account.</p>
-        {% if payment_mode == 'sandbox' %}<p class="payment-mode-note" role="note">Sandbox mode is selected; transactions are test-only.</p>{% elif payment_mode == 'live' %}<p class="payment-mode-note" role="note">Live payment processing is enabled.</p>{% endif %}
       </div>
       <div class="dashboard-purchase-actions">
         <a class="secondary-button" href="/concierge?intent=buy">Find art to buy <span aria-hidden="true">→</span></a>
         {% if payment_mode == 'sandbox' and paypal_configured %}
-        <button class="secondary-button" id="paypalSandboxTestButton" type="button">Test PayPal Sandbox · $1.00 CAD</button>
+        <button class="secondary-button" id="paypalSandboxTestButton" type="button">PayPal Sandbox test · $1.00 CAD</button>
         {% endif %}
       </div>
     </header>
-    {% if payment_mode == 'sandbox' and paypal_configured %}<p class="field-note">Use this one-dollar test transaction to verify PayPal checkout. It does not purchase an artwork and is only available in Sandbox mode.</p>{% endif %}
     <p id="dashboardPurchasesMessage" class="action-message" aria-live="polite"></p>
     <div id="dashboardPurchases" class="purchase-history-list"></div>
     <p id="dashboardPurchasesEmpty" class="empty-state" hidden>No purchases or seller checkouts have been recorded for this account yet.</p>

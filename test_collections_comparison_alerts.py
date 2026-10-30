@@ -168,9 +168,11 @@ def test_dashboard_page_renders_new_feature_panels_for_signed_in_account(monkeyp
     client, _ = _client(monkeypatch, tmp_path)
     response = client.get("/dashboard")
     assert response.status_code == 200
-    for marker in ('id="collectionsTab"', 'id="alertsTab"', 'id="collectionCreateForm"', 'id="checkAlertsButton"', 'id="comparisonModal"'):
+    for marker in ('id="collectionsTab"', 'id="alertsTab"', 'id="compareTab"', 'id="comparePanel"', 'id="checkAlertsButton"', 'id="comparisonModal"'):
         assert marker in response.text
-    assert "20261029-collections-comparison-alerts" in response.text
+    assert "20261030-dashboard-curation-compare-gogh" in response.text
+    assert 'id="collectionCreateForm"' not in response.text
+    assert 'id="dashboardComparisonContent"' in response.text
 
 
 def test_collection_and_alert_limits_and_ids_are_bounded(monkeypatch, tmp_path):
@@ -179,3 +181,75 @@ def test_collection_and_alert_limits_and_ids_are_bounded(monkeypatch, tmp_path):
     assert too_short.status_code == 422
     bad_alert = client.post("/api/account/alerts", json={"id": "not-valid", "type": "other", "target": {"seller_name": "UGallery"}})
     assert bad_alert.status_code == 422
+
+
+def test_curated_concierge_results_are_the_dashboard_collection_creation_path():
+    results = (ROOT / "templates/results.html").read_text()
+    dashboard = (ROOT / "templates/dashboard.html").read_text()
+    js = (ROOT / "static/js/app.js").read_text()
+    assert 'id="curatedCollectionSection"' in results
+    assert 'id="saveCuratedCollectionForm"' in results
+    assert "async function saveCuratedResultsAsCollection()" in js
+    assert "Curate a collection" in dashboard
+    assert 'id="collectionCreateForm"' not in dashboard
+
+
+def test_dashboard_has_a_visible_artwork_comparison_section():
+    dashboard = (ROOT / "templates/dashboard.html").read_text()
+    js = (ROOT / "static/js/app.js").read_text()
+    assert 'id="compareTab"' in dashboard
+    assert 'id="comparePanel"' in dashboard
+    assert 'id="dashboardComparisonContent"' in dashboard
+    assert "function renderComparisonPanel()" in js
+    assert "comparisonTableMarkup(works)" in js
+
+
+def test_dashboard_purchases_only_shows_the_one_dollar_sandbox_action_without_explanatory_notes():
+    dashboard = (ROOT / "templates/dashboard.html").read_text()
+    assert 'PayPal Sandbox test · $1.00 CAD' in dashboard
+    assert 'Use this one-dollar test transaction' not in dashboard
+    assert 'Sandbox mode is selected; transactions are test-only.' not in dashboard
+
+
+def test_explore_corrects_van_gough_to_van_gogh_catalogue_query():
+    from models.schemas import ConciergeRequest, Intent
+    from services.agent import _searchable_goal, _fast_search_directions
+
+    request = ConciergeRequest(intent=Intent.discover, goal="Show me art related to van gough.")
+    assert _searchable_goal(request) == "Vincent van Gogh"
+    assert _fast_search_directions(request)[0] == "Vincent van Gogh"
+
+
+def test_explore_default_canada_still_searches_north_american_museum_collections(monkeypatch):
+    import asyncio
+    import services.agent as agent
+    from models.schemas import ConciergeRequest, Intent
+    from services.art_sources import Artwork
+
+    class Provider:
+        def __init__(self, name, country_code, source_kind):
+            self.name = name
+            self.country_code = country_code
+            self.source_kind = source_kind
+            self.queries = []
+
+        async def search(self, query, limit=3):
+            self.queries.append(query)
+            return [Artwork(
+                id=f"{self.name}:van-gogh", title="Garden with Cypresses", artist="Vincent van Gogh",
+                image_url="https://images.example.org/van-gogh.jpg", detail_url="https://museum.example.org/van-gogh",
+                source=self.name, source_kind=self.source_kind, availability="not_for_sale", price=None,
+                currency=None, medium="Oil on canvas", dimensions="73 x 92 cm", year="1889",
+                description="Museum collection record", market_code=self.country_code,
+            )]
+
+    museum = Provider("North American Museum", "US", "institution")
+    canadian_shop = Provider("Canadian Shop", "CA", "commercial")
+    monkeypatch.setattr(agent, "institutional_providers", lambda: [museum])
+    monkeypatch.setattr(agent, "commercial_providers", lambda: [canadian_shop])
+    request = ConciergeRequest(intent=Intent.discover, region_scope="CA", goal="Show me art related to van gough.")
+    works, diagnostics = asyncio.run(agent._research(["Vincent van Gogh"], request, []))
+    assert museum.queries == ["Vincent van Gogh"]
+    assert canadian_shop.queries == ["Vincent van Gogh"]
+    assert any(work.artist == "Vincent van Gogh" and work.market_code == "US" for work in works)
+    assert {item["provider"] for item in diagnostics} == {"North American Museum", "Canadian Shop"}

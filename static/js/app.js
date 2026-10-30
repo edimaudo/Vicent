@@ -1,5 +1,5 @@
 (() => {
-  const STATE_VERSION = 10;
+  const STATE_VERSION = 11;
   const initialQuery = new URLSearchParams(window.location.search);
   const requestedIntent = initialQuery.get('intent') || 'discover';
   const validIntents = ['discover', 'find', 'curate', 'buy', 'learn'];
@@ -688,7 +688,7 @@
     renderCompareDock();
     if (state.last && window.ART_CONCIERGE_PAGE === 'results') renderResults(state.last);
     if (window.ART_CONCIERGE_PAGE === 'saved') renderSavedPage();
-    if (window.ART_CONCIERGE_PAGE === 'dashboard') renderCollectionsPanel();
+    if (window.ART_CONCIERGE_PAGE === 'dashboard') { renderComparisonPanel(); renderCollectionsPanel(); }
   }
 
   function artworkPriceLabel(work) {
@@ -697,15 +697,8 @@
     catch (_) { return `${Number(work.price).toFixed(2)} ${String(work.currency || 'CAD').toUpperCase()}`; }
   }
 
-  function renderComparison() {
-    const modal = $('#comparisonModal');
-    const content = $('#comparisonContent');
-    if (!modal || !content) return;
-    const works = state.compare.slice(0, 3);
-    if (works.length < 2) {
-      content.innerHTML = '<p class="empty-state">Select at least two artworks to compare.</p>';
-      return;
-    }
+  function comparisonTableMarkup(works) {
+    if (works.length < 2) return '<p class="empty-state">Select at least two artworks to compare.</p>';
     const fields = [
       ['Artist', (work) => work.artist || 'Not listed'],
       ['Price', artworkPriceLabel],
@@ -718,10 +711,28 @@
     ];
     const imageCells = works.map((work) => {
       const image = work.display_image_url || work.image_url || artworkFallbackUrl(work.title, work.artist);
-      return `<td><img class="comparison-image" src="${escapeAttribute(image)}" alt="${escapeAttribute(work.title || 'Artwork')}" loading="lazy"><strong>${escapeHtml(work.title || 'Untitled')}</strong></td>`;
+      return `<th scope="col"><img class="comparison-image" src="${escapeAttribute(image)}" alt="${escapeAttribute(work.title || 'Artwork')}" loading="lazy"><strong>${escapeHtml(work.title || 'Untitled')}</strong><button class="text-button comparison-remove" type="button" data-compare-id="${escapeAttribute(work.id)}">Remove</button></th>`;
     }).join('');
     const rows = fields.map(([label, getter]) => `<tr><th scope="row">${escapeHtml(label)}</th>${works.map((work) => `<td>${escapeHtml(getter(work))}</td>`).join('')}</tr>`).join('');
-    content.innerHTML = `<div class="comparison-table-wrap"><table class="comparison-table"><thead><tr><th scope="col"> </th>${imageCells}</tr></thead><tbody>${rows}<tr><th scope="row">Open listing</th>${works.map((work) => `<td>${work.detail_url ? `<a href="${escapeAttribute(work.detail_url)}" target="_blank" rel="noopener noreferrer">View seller listing ↗</a>` : 'Not available'}</td>`).join('')}</tr></tbody></table></div>`;
+    return `<div class="comparison-table-wrap"><table class="comparison-table"><thead><tr><th scope="col">Artwork</th>${imageCells}</tr></thead><tbody>${rows}<tr><th scope="row">Open listing</th>${works.map((work) => `<td>${work.detail_url ? `<a href="${escapeAttribute(work.detail_url)}" target="_blank" rel="noopener noreferrer">View seller listing ↗</a>` : 'Not available'}</td>`).join('')}</tr></tbody></table></div>`;
+  }
+
+  function renderComparison() {
+    const content = $('#comparisonContent');
+    if (!content) return;
+    content.innerHTML = comparisonTableMarkup(state.compare.slice(0, 3));
+    bindArtworkImageFallbacks(content);
+  }
+
+  function renderComparisonPanel() {
+    const content = $('#dashboardComparisonContent');
+    const empty = $('#dashboardComparisonEmpty');
+    const clear = $('#dashboardClearComparison');
+    if (!content) return;
+    const works = state.compare.slice(0, 3);
+    if (empty) { empty.hidden = works.length >= 2; empty.textContent = works.length === 1 ? 'One artwork selected. Select one more artwork to compare.' : 'No artworks selected yet. Open an artwork in Concierge or Saved ArtWorks and select Compare.'; }
+    if (clear) clear.hidden = works.length === 0;
+    content.innerHTML = works.length >= 2 ? comparisonTableMarkup(works) : '';
     bindArtworkImageFallbacks(content);
   }
 
@@ -951,12 +962,14 @@
 
     renderPurchaseHistory();
     renderTastePage();
+    renderComparisonPanel();
     renderCollectionsPanel();
     renderAlertsPanel();
 
     const dashboardTabs = [
       { name: 'overview', tab: $('#overviewTab'), panel: $('#overviewPanel') },
       { name: 'taste', tab: $('#tasteTab'), panel: $('#tastePanel') },
+      { name: 'compare', tab: $('#compareTab'), panel: $('#comparePanel') },
       { name: 'collections', tab: $('#collectionsTab'), panel: $('#collectionsPanel') },
       { name: 'alerts', tab: $('#alertsTab'), panel: $('#alertsPanel') },
       { name: 'purchases', tab: $('#purchasesTab'), panel: $('#purchasesPanel') },
@@ -996,7 +1009,7 @@
       });
     });
     const hash = window.location.hash.toLowerCase();
-    activateTab(hash === '#taste' ? 'taste' : hash === '#collections' ? 'collections' : hash === '#alerts' ? 'alerts' : hash === '#purchases' ? 'purchases' : 'overview');
+    activateTab(hash === '#taste' ? 'taste' : hash === '#compare' ? 'compare' : hash === '#collections' ? 'collections' : hash === '#alerts' ? 'alerts' : hash === '#purchases' ? 'purchases' : 'overview');
   }
 
   function renderHome() {
@@ -1531,6 +1544,31 @@
     if (note) note.textContent = guide.source_note || '';
   }
 
+  async function saveCuratedResultsAsCollection() {
+    const message = $('#saveCuratedCollectionMessage');
+    const button = $('#saveCuratedCollectionButton');
+    const input = $('#curatedCollectionName');
+    const data = state.last;
+    const name = String(input?.value || '').trim();
+    if (!data || data.intent !== 'curate') throw new Error('Run Curate a collection in Concierge first.');
+    if (name.length < 2) throw new Error('Give this collection a name of at least two characters.');
+    const works = (data.results || []).filter((work) => work.source_kind === 'commercial' && work.availability === 'available').slice(0, 3);
+    if (!works.length) throw new Error('There are no purchasable artworks in this curated result to save.');
+    if (button) { button.disabled = true; button.textContent = 'Saving collection…'; }
+    if (message) message.textContent = '';
+    try {
+      const description = String(data.request?.goal || data.summary || '').trim().slice(0, 500);
+      const collection = await createCollection(name, description);
+      for (const work of works) await addArtworkToCollection(collection.id, work);
+      if (message) message.innerHTML = `Saved ${works.length} artwork${works.length === 1 ? '' : 's'} to <strong>${escapeHtml(collection.name)}</strong>. <a href="/dashboard#collections">View your collections</a>.`;
+      if (input) input.value = '';
+      const section = $('#curatedCollectionSection');
+      if (section) section.dataset.savedCollectionId = collection.id;
+    } finally {
+      if (button) { button.disabled = false; button.textContent = 'Save collection'; }
+    }
+  }
+
   function renderResults(data) {
     // Ignore stale render attempts while a fresh request owns the Results view.
     if (state.searchRunActive) return;
@@ -1561,6 +1599,16 @@
     const notForSale = [];
     const visibleCount = results.length + notForSale.length;
     const visiblePurchasable = results.filter((work) => work.availability === 'available' && work.source_kind === 'commercial').length;
+    const curatedCollectionSection = $('#curatedCollectionSection');
+    const curatedCollectionName = $('#curatedCollectionName');
+    if (curatedCollectionSection) {
+      const canSaveCuratedSet = intent === 'curate' && results.length > 0;
+      curatedCollectionSection.hidden = !canSaveCuratedSet;
+      if (canSaveCuratedSet) {
+        curatedCollectionSection.dataset.savedCollectionId = '';
+        if (curatedCollectionName && !curatedCollectionName.value) curatedCollectionName.placeholder = 'e.g. Warm-toned landscapes';
+      }
+    }
     const buyShopsSection = $('#buyShopsSection');
     const buyShopLinks = $('#buyShopLinks');
     if (buyShopsSection && buyShopLinks) {
@@ -1987,8 +2035,8 @@
       const removeAlert = event.target.closest('[data-delete-alert]');
       if (removeAlert) { deleteAlert(removeAlert.dataset.deleteAlert); return; }
       if (event.target.closest('#openComparisonButton')) { openComparison(); return; }
-      if (event.target.closest('#clearComparisonButton') || event.target.closest('#clearComparisonFromModal')) {
-        state.compare = []; persistAppState(); renderCompareDock();
+      if (event.target.closest('#clearComparisonButton') || event.target.closest('#clearComparisonFromModal') || event.target.closest('#dashboardClearComparison')) {
+        state.compare = []; persistAppState(); renderCompareDock(); renderComparisonPanel();
         if (state.last && window.ART_CONCIERGE_PAGE === 'results') renderResults(state.last);
         if (window.ART_CONCIERGE_PAGE === 'saved') renderSavedPage();
         closeFeatureModal('comparisonModal'); return;
@@ -2102,17 +2150,6 @@
     renderDashboard();
     initTasteEditor();
     installTasteNavigationGuard();
-    $('#collectionCreateForm')?.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const name = $('#collectionName')?.value || '';
-      const description = $('#collectionDescription')?.value || '';
-      const message = $('#collectionsMessage');
-      try {
-        await createCollection(name, description);
-        event.currentTarget.reset();
-        if (message) message.textContent = 'Collection created.';
-      } catch (error) { if (message) message.textContent = error.message; }
-    });
     $('#checkAlertsButton')?.addEventListener('click', (event) => checkArtworkAlerts(event.currentTarget));
   }
 
@@ -2207,6 +2244,11 @@
   }
   function initResults() {
     const params = new URLSearchParams(window.location.search);
+    $('#saveCuratedCollectionForm')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try { await saveCuratedResultsAsCollection(); }
+      catch (error) { const message = $('#saveCuratedCollectionMessage'); if (message) message.textContent = error.message || 'The collection could not be saved.'; }
+    });
     const isNewRun = params.get('run') === '1';
     // A new request must never flash or briefly restore the previous search.
     if (isNewRun) {

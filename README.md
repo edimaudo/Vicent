@@ -1,13 +1,13 @@
 # Vincent | Art Concierge
 
-> **Build update — 29 October 2026**
-> Signed-out visitors are redirected to sign-in before accessing Dashboard, Concierge, Saved ArtWorks, results, or taste settings. Signing in from the landing page opens Concierge, and the demo profile is named James. PayPal Sandbox uses Vercel credentials plus a built-in CAD $1.00 test checkout; no PayPal catalog variable is required. See `CHANGELOG.md` for details.
+> **Build update — 30 October 2026**
+> Signed-out visitors are redirected to sign-in before accessing Dashboard, Concierge, Saved ArtWorks, results, or taste settings. Signing in from the landing page opens Concierge, and the demo profile is named James. Dashboard collections now use Concierge collection workflows, Artwork comparison is a dedicated Dashboard tab, and artist discovery corrects common name misspellings. PayPal Sandbox retains its CAD $1.00 test action without the extra explanatory notices. See `CHANGELOG.md` for details.
 
 A user-centric art concierge that combines broader cultural taste signals from Qloo with artwork research across commercial and institutional sources.
 
 ## The five Concierge options
 
-- **Explore art** — discover unexpected directions; optionally enable **Use my saved taste** to build on saved artworks, profile notes, likes/avoids, and recent ideas. Personalised Explore searches only commercial inventory explicitly available to acquire.
+- **Explore art** — discover unexpected directions across North American institutional collections and region-appropriate commercial sources; optionally enable **Use my saved taste** to build on saved artworks, profile notes, likes/avoids, and recent ideas. Saved-taste personalization searches commercial inventory explicitly available to acquire.
 - **Find art** — search for a specific artist, artwork, style, subject, or medium.
 - **Curate a collection** — assemble a coherent set using commercial works explicitly available to acquire.
 - **Buy art** — search public Canadian and U.S. art-shop catalogues for listings with a price, image, and seller page; final availability is reconfirmed at the seller.
@@ -31,7 +31,7 @@ For Explore, Find, and Curate, the concierge loop is:
 2. If no inspiration images were attached, rank the written-search pool within the normal text-only deadline.
 3. If images were attached, wait for the written search to finish, interpret the images with Gemini, and run a separate search using image-derived terms. If required image analysis cannot complete, return an explicit error rather than text-only recommendations.
 4. Resolve positive cultural references using Qloo `/search` followed by `/v2/insights`; where available, use Qloo-derived directions as additional metadata-supported ranking signals.
-5. Combine the written and, when attached, image-informed search pools, rank image-bearing works with deterministic fit scoring, enforce budget/acquisition rules, and return up to three visible cards. **Curate a collection, personalized Explore art, and Buy art search commercial seller inventory only** and show only listings explicitly marked available to acquire; they never fill gaps with museum records.
+5. Combine the written and, when attached, image-informed search pools, rank image-bearing works with deterministic fit scoring, enforce budget/acquisition rules, and return up to three visible cards. **Curate a collection, saved-taste personalized Explore, and Buy art search commercial seller inventory only** and show only listings explicitly marked available to acquire; they never fill gaps with museum records. Standard Explore and Find can also use North American institutional collections for discovery, including when Canada is selected, because the region selector governs commercial shop markets rather than the location of museum collections.
 
 Learn follows a separate path: it requires a written topic, creates a learning guide, and makes no catalogue calls or artwork recommendations. The image-inspiration uploader is hidden in Learn, and direct or stale image payloads are ignored so a vision service error cannot block the educational output.
 
@@ -53,8 +53,9 @@ Vincent's default Buy search uses public Canadian and U.S. shop catalogues, with
 
 ### Collection management and artwork comparison
 
-- Users can create up to 30 named collections, each holding up to 100 artworks. Add works from recommendation cards or Saved ArtWorks, remove individual works, and delete collections. Collection contents are persisted with registered accounts in the database and locally in IndexedDB for the James demo account.
-- Users can select two or three artworks and compare artist, asking price/currency, medium, dimensions, year, seller/source, availability, description, and the original seller listing. Comparison selections are browser-local and are not a separate saved collection.
+- Collections are created from the Concierge collection workflow: save a set returned by **Curate a collection** to Dashboard → **Collections**. Users can also create a named collection from the **Add to a collection** action on an individual artwork card, then add and remove works. The Dashboard does not provide a separate collection-creation workflow; it displays and manages the collections created through Concierge. Up to 30 named collections are supported, with up to 100 artworks each.
+- Collection contents are persisted with registered accounts in the database and locally in IndexedDB for the James demo account. Users can remove individual works or delete a collection.
+- Select two or three artworks using **Compare** on Concierge or Saved ArtWorks cards. The dedicated Dashboard → **Artwork comparison** tab displays artist, asking price/currency, medium, dimensions, year, seller/source, availability, description, and the original seller listing. Comparison selections are browser-local and are not a separate saved collection.
 - Collection totals are shown only when the listed currencies can be combined meaningfully. Mixed-currency collections are labelled rather than incorrectly summed.
 
 ## Artwork and seller alerts
@@ -248,6 +249,6 @@ For signed-in users, Vincent merges the persisted taste profile into current req
 
 ### Search region
 
-Concierge has a region selector for **Canada**, **United States**, or **Both Canada and the US**. Canada is preselected. The selected market is saved as a lightweight browser preference and applied to provider selection and returned artwork records. Canada searches ArtMatch and Rookleys; the United States searches UGallery and Saatchi Art; Both searches all four shop catalogues. Buy never substitutes museum records for shop inventory. Learn hides the region control because it does not search artwork catalogues.
+Concierge has a region selector for **Canada**, **United States**, or **Both Canada and the US**. Canada is preselected. The selected market is saved as a lightweight browser preference and applied to commercial shop selection and commercial records: Canada searches ArtMatch and Rookleys; the United States searches UGallery and Saatchi Art; Both searches all four shop catalogues. Standard Explore and Find retain North American institutional collections for discovery in either market, so Canada selection does not suppress the U.S. museum collections currently available in the source registry. Curate, saved-taste personalized Explore, and Buy remain restricted to commercial records explicitly listed as available to acquire. Buy never substitutes museum records for shop inventory. Learn hides the region control because it does not search artwork catalogues.
 
-PayPal defaults to sandbox mode through `PAYPAL_MODE=sandbox`. `GET /api/diagnostics` reports PayPal credential readiness, sandbox/live mode, region/locale, and the number of valid approved catalog rows, without returning secrets. Payment-processor names and sandbox/live status are exposed in the Purchases/payment section and checkout status pages, not general art discovery cards.
+PayPal defaults to sandbox mode through `PAYPAL_MODE=sandbox`. `GET /api/diagnostics` reports PayPal credential readiness, sandbox/live mode, region/locale, without returning secrets. The Purchases tab exposes the CAD $1.00 Sandbox test action when Sandbox credentials are configured; it does not display the redundant Sandbox explanation notices removed in the 30 October update.

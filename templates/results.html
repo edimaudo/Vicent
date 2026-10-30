@@ -24,6 +24,19 @@
     <div id="tasteTags" class="taste-tags"></div>
   </div>
 
+  <section class="result-section curated-collection-save" id="curatedCollectionSection" hidden aria-labelledby="curatedCollectionHeading">
+    <div class="section-heading">
+      <h2 id="curatedCollectionHeading">Save this curated collection</h2>
+      <p>Keep these selected works together in your Dashboard collections.</p>
+    </div>
+    <form id="saveCuratedCollectionForm" class="curated-collection-save-form">
+      <label class="field-label" for="curatedCollectionName">Collection name</label>
+      <input id="curatedCollectionName" name="name" maxlength="100" placeholder="e.g. Expressive landscapes" required>
+      <button class="primary-button" id="saveCuratedCollectionButton" type="submit">Save collection</button>
+    </form>
+    <p id="saveCuratedCollectionMessage" class="action-message" role="status" aria-live="polite"></p>
+  </section>
+
   <section id="learningGuideSection" class="learning-guide result-section" hidden aria-labelledby="learningGuideHeading">
     <div class="section-heading">
       <h2 id="learningGuideHeading">Learn about the subject</h2>
