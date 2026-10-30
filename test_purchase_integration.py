@@ -180,7 +180,7 @@ def test_paypal_sandbox_test_flow_needs_no_catalog_variable(monkeypatch):
 
     dashboard = client.get("/dashboard")
     assert dashboard.status_code == 200
-    assert 'id="paypalSandboxTestButton"' in dashboard.text
+    assert 'id="paypalSandboxTestButton"' not in dashboard.text
 
     started = client.post("/api/paypal/sandbox-test/orders")
     assert started.status_code == 200, started.text

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-30 — Remove PayPal Sandbox test action from Purchases UI
+
+- Removed the PayPal Sandbox test button and its browser-side click handler from Dashboard → Purchases. The panel now shows artwork purchase history and the existing route to Find art only.
+- Kept the authenticated server-side Sandbox test-order endpoint for controlled integration testing; it is not linked from customer-facing pages.
+- Updated current setup documentation and regression tests so the $1.00 CAD test transaction is not represented as a Dashboard purchase action.
+
 ## 2026-10-30 — Dashboard collections, artwork comparison, and Explore corrections
 
 - Removed the two redundant Sandbox explanatory notices from Dashboard → Purchases. Kept the PayPal Sandbox test action labelled **$1.00 CAD**.

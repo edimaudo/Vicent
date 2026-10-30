@@ -170,7 +170,7 @@ def test_dashboard_page_renders_new_feature_panels_for_signed_in_account(monkeyp
     assert response.status_code == 200
     for marker in ('id="collectionsTab"', 'id="alertsTab"', 'id="compareTab"', 'id="comparePanel"', 'id="checkAlertsButton"', 'id="comparisonModal"'):
         assert marker in response.text
-    assert "20261030-custom-404" in response.text
+    assert "20261030-remove-paypal-test-ui" in response.text
     assert 'id="collectionCreateForm"' not in response.text
     assert 'id="dashboardComparisonContent"' in response.text
 
@@ -206,7 +206,8 @@ def test_dashboard_has_a_visible_artwork_comparison_section():
 
 def test_dashboard_purchases_only_shows_the_one_dollar_sandbox_action_without_explanatory_notes():
     dashboard = (ROOT / "templates/dashboard.html").read_text()
-    assert 'PayPal Sandbox test · $1.00 CAD' in dashboard
+    assert 'PayPal Sandbox test · $1.00 CAD' not in dashboard
+    assert 'paypalSandboxTestButton' not in dashboard
     assert 'Use this one-dollar test transaction' not in dashboard
     assert 'Sandbox mode is selected; transactions are test-only.' not in dashboard
 

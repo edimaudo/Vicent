@@ -135,9 +135,6 @@
       </div>
       <div class="dashboard-purchase-actions">
         <a class="secondary-button" href="/concierge?intent=buy">Find art to buy <span aria-hidden="true">→</span></a>
-        {% if payment_mode == 'sandbox' and paypal_configured %}
-        <button class="secondary-button" id="paypalSandboxTestButton" type="button">PayPal Sandbox test · $1.00 CAD</button>
-        {% endif %}
       </div>
     </header>
     <p id="dashboardPurchasesMessage" class="action-message" aria-live="polite"></p>

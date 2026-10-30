@@ -62,6 +62,6 @@ def test_new_deployment_docs_do_not_require_paypal_catalog_variable() -> None:
     assert "VINCENT_BASE_URL" in readme and "VINCENT_BASE_URL" in example
     assert "VINCENT_PAYPAL_CATALOG" not in readme and "VINCENT_PAYPAL_CATALOG" not in example
     assert "ARTCO_PAYPAL_CATALOG" not in readme and "ARTCO_PAYPAL_CATALOG" not in example
-    assert "Sandbox test checkout" in readme
+    assert "Dashboard → Purchases section does not expose a PayPal Sandbox test button" in readme
     assert "PAYPAL_CLIENT_ID" in example and "PAYPAL_CLIENT_SECRET" in example
     assert "VINCENT_STRIPE_CHECKOUT_CATALOG" in readme and "VINCENT_STRIPE_CHECKOUT_CATALOG" in example
